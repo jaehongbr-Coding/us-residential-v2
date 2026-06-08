@@ -10,7 +10,7 @@ import os
 import sys
 import time
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import unescape
 
 from dotenv import load_dotenv
@@ -280,11 +280,15 @@ def fetch_student_housing_feed(university: dict) -> list[dict]:
     except Exception as e:
         print(f"    [SKIP] {name} — feedparser 오류: {e}")
         return []
+    cutoff = datetime.now() - timedelta(days=30)
     articles = []
     for entry in feed.entries[:5]:
         title = _clean_html(entry.get("title", "")).strip()
         link = (entry.get("link") or "").strip()
         if not title or not link:
+            continue
+        published_str = _parse_published(entry)
+        if datetime.strptime(published_str, "%Y-%m-%d %H:%M:%S") < cutoff:
             continue
         raw_summary = (
             entry.get("summary")
@@ -294,7 +298,7 @@ def fetch_student_housing_feed(university: dict) -> list[dict]:
         articles.append({
             "article_id":       make_article_id(link),
             "collected_at":     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "published_at":     _parse_published(entry),
+            "published_at":     published_str,
             "source":           source_label,
             "title":            title,
             "url":              link,
@@ -335,11 +339,16 @@ def fetch_feed(source: str, url: str, sector: str) -> list[dict]:
         print(f"  [SKIP] {source} — feedparser 오류: {e}")
         return []
 
+    cutoff = datetime.now() - timedelta(days=30)
     articles = []
     for entry in feed.entries:
         title = _clean_html(entry.get("title", "")).strip()
         link  = (entry.get("link") or "").strip()
         if not title or not link:
+            continue
+
+        published_str = _parse_published(entry)
+        if datetime.strptime(published_str, "%Y-%m-%d %H:%M:%S") < cutoff:
             continue
 
         # summary: description 우선, 없으면 content
@@ -352,7 +361,7 @@ def fetch_feed(source: str, url: str, sector: str) -> list[dict]:
         articles.append({
             "article_id":    make_article_id(link),
             "collected_at":  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "published_at":  _parse_published(entry),
+            "published_at":  published_str,
             "source":        source,
             "title":         title,
             "url":           link,
