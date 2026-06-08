@@ -11,6 +11,10 @@ import sys
 from datetime import datetime
 from html import unescape
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Windows cp949 터미널에서 한글·특수문자 출력 가능하도록
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
