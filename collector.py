@@ -40,18 +40,14 @@ CSV_COLUMNS = [
 
 RSS_FEEDS = [
     # 코어 — Multifamily
-    {"source": "Multifamily Dive",       "url": "https://www.multifamilydive.com/feeds/news/",           "sector": "Multifamily"},
-    {"source": "Multifamily Executive",  "url": "https://www.multifamilyexecutive.com/rss.xml",           "sector": "Multifamily"},
-    {"source": "YieldPro",               "url": "https://yieldpro.com/feed/",                             "sector": "Multifamily"},
     {"source": "Multi-Housing News",     "url": "https://www.multihousingnews.com/feed/",                 "sector": "Multifamily"},
+    {"source": "YieldPro",               "url": "https://yieldpro.com/feed/",                             "sector": "Multifamily"},
     {"source": "GlobeSt",                "url": "https://www.globest.com/feed/",                          "sector": "CRE"},
     {"source": "Bisnow",                 "url": "https://www.bisnow.com/rss",                             "sector": "CRE"},
     {"source": "Commercial Observer",    "url": "https://commercialobserver.com/feed/",                   "sector": "CRE"},
     {"source": "Connect CRE",            "url": "https://www.connectcre.com/feed/",                       "sector": "CRE"},
     {"source": "The Real Deal",          "url": "https://therealdeal.com/feed/",                          "sector": "CRE"},
-    {"source": "HousingWire",            "url": "https://www.housingwire.com/feed/",                      "sector": "Residential"},
     {"source": "Eye on Housing (NAHB)",  "url": "https://eyeonhousing.org/category/multifamily/feed/",    "sector": "Multifamily"},
-    {"source": "Construction Dive",      "url": "https://www.constructiondive.com/feeds/news/",           "sector": "Construction"},
     # 협회·정책
     {"source": "NMHC",                   "url": "https://www.nmhc.org/news/rss/",                         "sector": "Policy"},
     {"source": "Urban Land Institute",   "url": "https://urbanland.uli.org/feed/",                        "sector": "Policy"},
@@ -59,7 +55,6 @@ RSS_FEEDS = [
     # 자본·금융
     {"source": "Walker & Dunlop",        "url": "https://www.walkerdunlop.com/insights/feed/",            "sector": "Capital"},
     {"source": "Berkadia",               "url": "https://berkadia.com/feed/",                             "sector": "Capital"},
-    {"source": "Blackstone",             "url": "https://www.blackstone.com/news/rss/",                   "sector": "Capital"},
     # 지역 — Sun Belt + West Coast
     {"source": "Connect CRE Texas",       "url": "https://www.connectcre.com/feed?story-market=texas",          "sector": "Multifamily"},
     {"source": "Connect CRE South FL",    "url": "https://www.connectcre.com/feed?story-market=south-florida",  "sector": "Multifamily"},
@@ -310,7 +305,7 @@ def fetch_student_housing_feed(university: dict) -> list[dict]:
             "sector":           "Student Housing",
             "woomi_relevance":  "",
             "claude_rationale": "",
-            "access_limited":   len(summary) < 150,
+            "access_limited":   False,  # Google News RSS: title이 실질 콘텐츠
         })
     return articles
 
@@ -373,7 +368,7 @@ def fetch_feed(source: str, url: str, sector: str) -> list[dict]:
             "sector":        sector,
             "woomi_relevance": "",
             "claude_rationale": "",
-            "access_limited": len(summary) < 150,
+            "access_limited": len(summary) < 100,
         })
     return articles
 
