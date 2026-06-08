@@ -5,6 +5,9 @@ on:
     - cron: "0 21 * * *"  # 한국시간 매일 오전 6시 (UTC 21:00)
   workflow_dispatch:        # 수동 실행
 
+permissions:
+  contents: write
+
 jobs:
   collect-and-classify:
     runs-on: ubuntu-latest
@@ -12,6 +15,8 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
