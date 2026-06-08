@@ -11,6 +11,9 @@ import time
 from datetime import datetime
 
 import anthropic
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Windows cp949 터미널에서 한글·특수문자 출력 가능하도록
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -21,7 +24,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 # ------------------------------------------------------------------
 
 ARTICLES_CSV  = "articles.csv"
-BATCH_SIZE    = 20
+BATCH_SIZE    = 300
 MODEL         = "claude-haiku-4-5"
 
 CSV_COLUMNS = [
