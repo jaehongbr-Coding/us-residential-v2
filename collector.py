@@ -281,7 +281,7 @@ def fetch_student_housing_feed(university: dict) -> list[dict]:
         print(f"    [SKIP] {name} — feedparser 오류: {e}")
         return []
     articles = []
-    for entry in feed.entries:
+    for entry in feed.entries[:5]:
         title = _clean_html(entry.get("title", "")).strip()
         link = (entry.get("link") or "").strip()
         if not title or not link:
@@ -315,11 +315,14 @@ def _clean_html(raw: str) -> str:
 
 
 def _parse_published(entry) -> str:
-    """published 날짜 파싱. 실패 시 오늘 날짜 반환."""
+    """published 날짜 파싱. 실패 시 또는 1990년 이전 날짜는 오늘 날짜 반환."""
     try:
         t = entry.get("published_parsed") or entry.get("updated_parsed")
         if t:
-            return datetime(*t[:6]).strftime("%Y-%m-%d %H:%M:%S")
+            dt = datetime(*t[:6])
+            if dt.year < 1990:
+                return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
         pass
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
