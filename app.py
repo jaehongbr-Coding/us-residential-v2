@@ -100,23 +100,23 @@ def sidebar_filters(df: pd.DataFrame) -> pd.DataFrame:
     # 분류 실행 버튼
     st.sidebar.markdown("**분류 실행**")
     unclassified_count = int((~df["classified"]).sum())
-    st.sidebar.caption(f"미분류 기사: {unclassified_count}건")
 
-    if st.sidebar.button("▶ Claude 분류 실행", type="primary", use_container_width=True):
-        if unclassified_count == 0:
-            st.sidebar.info("분류할 기사가 없습니다.")
-        else:
-            with st.spinner("Claude 분류 중..."):
-                try:
-                    result = run_classifier()
-                    st.sidebar.success(
-                        f"완료: 성공 {result['success']}건 / "
-                        f"실패 {result['failed']}건 / "
-                        f"남은 미분류 {result['remaining']}건"
-                    )
-                    reload()
-                except RuntimeError as e:
-                    st.sidebar.error(str(e))
+    btn_label    = f"▶ Claude 분류 실행 ({unclassified_count}건)" if unclassified_count > 0 else "✓ 분류 완료"
+    btn_type     = "primary" if unclassified_count > 0 else "secondary"
+    btn_disabled = unclassified_count == 0
+
+    if st.sidebar.button(btn_label, type=btn_type, disabled=btn_disabled, use_container_width=True):
+        with st.spinner("Claude 분류 중..."):
+            try:
+                result = run_classifier()
+                st.sidebar.success(
+                    f"완료: 성공 {result['success']}건 / "
+                    f"실패 {result['failed']}건 / "
+                    f"남은 미분류 {result['remaining']}건"
+                )
+                reload()
+            except RuntimeError as e:
+                st.sidebar.error(str(e))
 
     return filtered
 
