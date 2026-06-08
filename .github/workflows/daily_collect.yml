@@ -1,0 +1,44 @@
+name: Daily Collect & Classify
+
+on:
+  schedule:
+    - cron: "0 21 * * *"  # 한국시간 매일 오전 6시 (UTC 21:00)
+  workflow_dispatch:        # 수동 실행
+
+jobs:
+  collect-and-classify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Collect articles
+        run: python collector.py
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Classify articles
+        run: python classifier.py
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Commit & push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add articles.csv
+          if git diff --cached --quiet; then
+            echo "변경사항 없음. 커밋 스킵."
+          else
+            git commit -m "auto: daily update $(date +%Y-%m-%d)"
+            git push
+          fi
