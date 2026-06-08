@@ -42,7 +42,7 @@ Classify the given article and return ONLY a JSON object with these exact fields
   "category":         one of ["개발" | "시장" | "GP·자본흐름"],
   "event_tags":       array of applicable tags from [construction_start, delivery, permit, land_acquisition, transaction, acquisition, JV, policy, market_data, rent_occupancy, construction_cost, financing],
   "signal_type":      one of ["강세" | "약세" | "중립" | "혼재"],
-  "sector":           one of ["Multifamily" | "BTR" | "SFR" | "Student Housing" | "Senior Housing" | "Affordable Housing" | "Workforce Housing" | "Mixed-use" | "Other"],
+  "sector":           one of ["Multifamily" | "BTR" | "SFR" | "Student Housing" | "Senior Housing" | "Affordable Housing" | "Workforce Housing" | "Mixed-use"],
   "woomi_relevance":  one of ["높음" | "보통" | "낮음"],
   "claude_rationale": one sentence in Korean explaining the classification
 }
@@ -57,8 +57,12 @@ Policy and regulatory articles → always "시장"
 If uncertain which of the three applies → default to "시장"
 
 sector rules:
-CRITICAL: Do NOT use "Policy" as a sector value. It is not a valid sector.
-For policy articles, classify sector by the relevant housing type:
+CRITICAL: "Other" and "Policy" are NOT valid sector values. Never use them.
+Valid sectors ONLY: ["Multifamily", "BTR", "SFR", "Student Housing", "Senior Housing", "Affordable Housing", "Workforce Housing", "Mixed-use"]
+Assignment rules:
+  - industrial / office / commercial real estate → "Mixed-use"
+  - residential-related but unclear type → "Multifamily"
+  - unrelated to residential (e.g. biotech, awards, finance unrelated to RE) → sector = "Multifamily", woomi_relevance = "낮음"
   - affordable housing / low-income policy → "Affordable Housing"
   - general housing / multifamily policy → "Multifamily"
   - zoning / land use policy → "Multifamily"
