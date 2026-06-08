@@ -152,18 +152,17 @@ def article_table(filtered: pd.DataFrame):
 
     display = filtered.copy()
 
-    # title → 마크다운 링크
     display["제목"] = display.apply(
-        lambda r: f"[{'🔒 ' if r['access_limited'] else ''}{r['title']}]({r['url']})",
+        lambda r: f"{'🔒 ' if r['access_limited'] else ''}{r['title']}",
         axis=1,
     )
-
     display["게재일"] = display["published_at"].dt.strftime("%Y-%m-%d")
 
     cols = {
         "게재일":           "게재일",
         "source":          "출처",
         "제목":            "제목",
+        "url":             "원문",
         "category":        "카테고리",
         "sector":          "섹터",
         "event_tags":      "이벤트 태그",
@@ -177,6 +176,10 @@ def article_table(filtered: pd.DataFrame):
         hide_index=True,
         column_config={
             "제목": st.column_config.Column(width="large"),
+            "원문": st.column_config.LinkColumn(
+                display_text="🔗 링크",
+                width="small",
+            ),
             "분류 근거": st.column_config.Column(width="large"),
         },
     )
