@@ -97,6 +97,13 @@ def sidebar_filters(df: pd.DataFrame) -> pd.DataFrame:
 
     st.sidebar.divider()
 
+    # 유료 기사 필터
+    hide_paywalled = st.sidebar.checkbox("🔒 유료 기사 숨기기", value=True)
+    if hide_paywalled:
+        filtered = filtered[~filtered["access_limited"]]
+
+    st.sidebar.divider()
+
     # 분류 실행 버튼
     st.sidebar.markdown("**분류 실행**")
     unclassified_count = int((~df["classified"]).sum())
@@ -118,7 +125,7 @@ def sidebar_filters(df: pd.DataFrame) -> pd.DataFrame:
             except RuntimeError as e:
                 st.sidebar.error(str(e))
 
-    return filtered
+    return filtered, hide_paywalled
 
 
 # ------------------------------------------------------------------
@@ -189,10 +196,12 @@ def article_table(filtered: pd.DataFrame):
 # Student Housing 모니터
 # ------------------------------------------------------------------
 
-def show_student_housing_section(df: pd.DataFrame):
+def show_student_housing_section(df: pd.DataFrame, hide_paywalled: bool = True):
     st.markdown("### 🎓 Student Housing 모니터")
 
     sh = df[df["sector"] == "Student Housing"].copy()
+    if hide_paywalled:
+        sh = sh[~sh["access_limited"]]
 
     if sh.empty:
         st.info("Student Housing 기사가 없습니다.")
@@ -271,14 +280,14 @@ def main():
         st.warning("articles.csv가 없습니다. 먼저 `python collector.py`를 실행하세요.")
         return
 
-    filtered = sidebar_filters(df)
+    filtered, hide_paywalled = sidebar_filters(df)
     summary_cards(df, filtered)
     st.divider()
     article_table(filtered)
     st.divider()
     export_button(filtered)
     st.divider()
-    show_student_housing_section(df)
+    show_student_housing_section(df, hide_paywalled)
 
 
 if __name__ == "__main__":

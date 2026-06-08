@@ -40,6 +40,8 @@ CSV_COLUMNS = [
 
 RSS_FEEDS = [
     # 코어 — Multifamily
+    {"source": "Multifamily Dive",       "url": "https://www.multifamilydive.com/feeds/news/",           "sector": "Multifamily"},
+    {"source": "Multifamily Executive",  "url": "https://www.multifamilyexecutive.com/rss.xml",           "sector": "Multifamily"},
     {"source": "Multi-Housing News",     "url": "https://www.multihousingnews.com/feed/",                 "sector": "Multifamily"},
     {"source": "YieldPro",               "url": "https://yieldpro.com/feed/",                             "sector": "Multifamily"},
     {"source": "GlobeSt",                "url": "https://www.globest.com/feed/",                          "sector": "CRE"},
