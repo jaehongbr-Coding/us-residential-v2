@@ -186,6 +186,62 @@ def article_table(filtered: pd.DataFrame):
 
 
 # ------------------------------------------------------------------
+# Student Housing 모니터
+# ------------------------------------------------------------------
+
+def show_student_housing_section(df: pd.DataFrame):
+    st.markdown("### 🎓 Student Housing 모니터")
+
+    sh = df[df["sector"] == "Student Housing"].copy()
+
+    if sh.empty:
+        st.info("Student Housing 기사가 없습니다.")
+        return
+
+    # 대학명 추출: "Student Housing — {name} ({state})" → name
+    def parse_university(source: str) -> str:
+        try:
+            after = source.split("Student Housing — ", 1)[1]
+            return after.rsplit(" (", 1)[0]
+        except (IndexError, ValueError):
+            return source
+
+    sh["대학명"] = sh["source"].apply(parse_university)
+
+    # 상위 10개 대학 bar chart
+    top10 = sh["대학명"].value_counts().head(10).rename("기사 수")
+    st.bar_chart(top10)
+
+    # 기사 테이블 (woomi_relevance == "높음" 이면 ⭐)
+    sh["제목"] = sh.apply(
+        lambda r: f"{'⭐ ' if r['woomi_relevance'] == '높음' else ''}{'🔒 ' if r['access_limited'] else ''}{r['title']}",
+        axis=1,
+    )
+    sh["게재일"] = sh["published_at"].dt.strftime("%Y-%m-%d")
+
+    cols = {
+        "게재일":           "게재일",
+        "대학명":           "대학",
+        "제목":            "제목",
+        "url":             "원문",
+        "event_tags":      "이벤트 태그",
+        "woomi_relevance": "우미 관련도",
+        "claude_rationale": "분류 근거",
+    }
+
+    st.dataframe(
+        sh[list(cols.keys())].rename(columns=cols),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "제목": st.column_config.Column(width="large"),
+            "원문": st.column_config.LinkColumn(display_text="🔗 링크", width="small"),
+            "분류 근거": st.column_config.Column(width="large"),
+        },
+    )
+
+
+# ------------------------------------------------------------------
 # CSV 내보내기
 # ------------------------------------------------------------------
 
@@ -221,6 +277,8 @@ def main():
     article_table(filtered)
     st.divider()
     export_button(filtered)
+    st.divider()
+    show_student_housing_section(df)
 
 
 if __name__ == "__main__":
