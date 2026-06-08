@@ -42,7 +42,7 @@ Classify the given article and return ONLY a JSON object with these exact fields
   "category":         one of ["개발" | "시장" | "GP·자본흐름"],
   "event_tags":       array of applicable tags from [construction_start, delivery, permit, land_acquisition, transaction, acquisition, JV, policy, market_data, rent_occupancy, construction_cost, financing],
   "signal_type":      one of ["강세" | "약세" | "중립" | "혼재"],
-  "sector":           one of ["Multifamily" | "BTR" | "SFR" | "Student Housing" | "Senior Housing" | "Affordable Housing" | "Workforce Housing" | "Mixed-use" | "Policy" | "Other"],
+  "sector":           one of ["Multifamily" | "BTR" | "SFR" | "Student Housing" | "Senior Housing" | "Affordable Housing" | "Workforce Housing" | "Mixed-use" | "Other"],
   "woomi_relevance":  one of ["높음" | "보통" | "낮음"],
   "claude_rationale": one sentence in Korean explaining the classification
 }
@@ -56,6 +56,13 @@ CRITICAL: Do NOT use "Policy", "Other", or any English word as a category value.
 Policy and regulatory articles → always "시장"
 If uncertain which of the three applies → default to "시장"
 
+sector rules:
+CRITICAL: Do NOT use "Policy" as a sector value. It is not a valid sector.
+For policy articles, classify sector by the relevant housing type:
+  - affordable housing / low-income policy → "Affordable Housing"
+  - general housing / multifamily policy → "Multifamily"
+  - zoning / land use policy → "Multifamily"
+
 financing rule (strictly enforced):
 Financing, loan, and refinancing content must NEVER determine the category.
 Determine category from the core action (development / market data / transaction), then add "financing" to event_tags if financing content is present.
@@ -64,10 +71,22 @@ event_tags rules:
 - Select all tags that apply. Multiple tags are expected and encouraged.
 - "financing": add whenever the article mentions a loan, debt, refinancing, or capital raise, regardless of category.
 
-woomi_relevance rules:
-- "높음": article directly mentions LA / Atlanta / Dallas / Houston, OR involves BTR / residential JV / Co-GP structure, OR mentions Korean or Japanese capital investing in US residential, OR mentions Kennedy Wilson / Blue Vista / Lionheart / Middleburg / Hillpointe
-- "보통": covers general US residential market trends or Sun Belt dynamics
-- "낮음": unrelated to Woomi's focus markets or sectors
+woomi_relevance rules (apply differently by category):
+
+[GP·자본흐름 category]
+- "높음": niche sector M&A, platform acquisition, or fund formation (BTR/Student Housing/Senior/Workforce/SFR); direct mention of Kennedy Wilson/Blue Vista/Lionheart/Middleburg/Hillpointe/Core Spaces/NexMetro; portfolio deal $50M+; Korean or Japanese capital in US residential; JV/Co-GP/development partnership structure
+- "보통": single-asset MF transaction, small-to-mid-size fund
+- "낮음": sub-$20M single asset deal, out-of-focus sector
+
+[시장 category]
+- "높음": Fed rate decision or mortgage rate movement; national or Sun Belt new-supply rent/absorption trend; housing supply policy (zoning reform, YIMBY, LIHTC); national multifamily starts or permits data
+- "보통": single-city rent trend or demand data
+- "낮음": simple regional stat, individual building leasing update
+
+[개발 category]
+- "높음": confirmed groundbreaking or broke-ground article; permit filing or zoning approval; development in LA/Atlanta/Dallas/Houston/Phoenix; BTR or Student Housing project
+- "보통": general MF development plan announcement in other markets
+- "낮음": vague development intent, speculative land acquisition article
 
 Return only the JSON object. No explanation, no markdown, no code fences.
 """
