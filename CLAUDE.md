@@ -37,6 +37,15 @@ woomi_relevance: CSV 저장만, UI 미노출
 3. 개발 기사 비중 확대 (현재 12.9%)
 4. Phase 2: 가설 검증 화면 (기사 500건 이상 후)
 
+## Bash 자동 허용 명령어
+다음 명령어는 항상 자동으로 허용한다:
+- git add
+- git commit
+- git pull
+- git push
+- git status
+- git log
+
 ## 자율 진행 허용
 - 함수 rename, 키워드 수정, 우선순위 변경
 - 문법 확인, 분포 집계
