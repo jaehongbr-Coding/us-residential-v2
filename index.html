@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>US Residential Intelligence v2</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #fff;
+      color: #333;
+      font-size: 14px;
+    }
+
+    /* ── Layout ── */
+    .layout {
+      display: flex;
+      max-width: 1200px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 220px;
+      flex-shrink: 0;
+      padding: 20px 16px;
+      border-right: 1px solid #e0e0e0;
+      background: #fafafa;
+    }
+    .sidebar h2 { font-size: 15px; margin-bottom: 14px; color: #555; }
+    .sidebar label { display: block; font-size: 12px; color: #666; margin: 12px 0 4px; font-weight: 600; }
+    .sidebar select, .sidebar input[type="date"] {
+      width: 100%;
+      padding: 5px 7px;
+      font-size: 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fff;
+    }
+    .sidebar select[multiple] { height: 80px; }
+    .sidebar .checkbox-row {
+      display: flex; align-items: center; gap: 6px;
+      margin-top: 12px; font-size: 12px; color: #444;
+    }
+    .sidebar .divider { border: none; border-top: 1px solid #e0e0e0; margin: 14px 0; }
+
+    /* ── Mobile sidebar toggle ── */
+    .mobile-filter-toggle {
+      display: none;
+      width: 100%;
+      padding: 10px 14px;
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      margin-bottom: 12px;
+      text-align: left;
+    }
+    .mobile-sidebar {
+      display: none;
+      background: #fafafa;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    .mobile-sidebar.open { display: block; }
+
+    /* ── Main ── */
+    .main {
+      flex: 1;
+      padding: 20px 24px;
+      min-width: 0;
+    }
+
+    /* ── Header ── */
+    header { margin-bottom: 20px; }
+    header h1 { font-size: 22px; font-weight: 700; }
+    header p  { font-size: 12px; color: #888; margin-top: 4px; }
+
+    /* ── Section ── */
+    .section { margin-bottom: 28px; }
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #eee;
+    }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; border-bottom: 1px solid #ddd; }
+    .tab-btn {
+      padding: 7px 14px;
+      font-size: 12px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      color: #666;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -1px;
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: #333; }
+    .tab-btn.active { color: #1a73e8; border-bottom-color: #1a73e8; font-weight: 600; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Table ── */
+    .tbl-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    thead tr { border-bottom: 1px solid #ddd; }
+    th {
+      padding: 5px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: left;
+      color: #555;
+      white-space: nowrap;
+    }
+    td {
+      padding: 4px 6px;
+      font-size: 12px;
+      vertical-align: top;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    tr:hover td { background: #fafafa; }
+
+    .col-date      { width: 60px; white-space: nowrap; color: #888; font-size: 11px; }
+    .col-title     { /* flex */ }
+    .col-sector    { width: 80px; color: #555; font-size: 11px; }
+    .col-tags      { width: 120px; color: #666; font-size: 11px; word-break: break-word; }
+    .col-rationale { width: 200px; color: #666; font-size: 11px; word-break: break-word; }
+
+    .title-link {
+      color: #1a73e8;
+      text-decoration: none;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .title-link:hover { text-decoration: underline; }
+    .star { color: #f4b400; }
+
+    .empty-msg { font-size: 13px; color: #999; padding: 12px 4px; }
+
+    .sh-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #555; margin-bottom: 10px; }
+
+    /* ── Spinner ── */
+    #spinner {
+      display: flex; align-items: center; justify-content: center;
+      padding: 60px; color: #999; font-size: 14px; gap: 10px;
+    }
+    .spin {
+      width: 20px; height: 20px;
+      border: 3px solid #ddd;
+      border-top-color: #1a73e8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      .sidebar { display: none; }
+      .mobile-filter-toggle { display: block; }
+      .main { padding: 12px 14px; }
+      header h1 { font-size: 18px; }
+      .col-sector, .col-tags { display: none; }
+      .col-rationale { width: 140px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- ── Desktop Sidebar ── -->
+  <aside class="sidebar" id="desktopSidebar">
+    <h2>🔍 필터</h2>
+    <label>카테고리</label>
+    <select id="d_category" multiple></select>
+    <label>섹터</label>
+    <select id="d_sector" multiple></select>
+    <hr class="divider" />
+    <label>From</label>
+    <input type="date" id="d_from" />
+    <label>To</label>
+    <input type="date" id="d_to" />
+    <hr class="divider" />
+    <div class="checkbox-row">
+      <input type="checkbox" id="d_hide_paywall" checked />
+      <label for="d_hide_paywall" style="margin:0">🔒 유료 기사 숨기기</label>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="main">
+
+    <!-- Mobile filter toggle -->
+    <button class="mobile-filter-toggle" id="mobileToggle" onclick="toggleMobileFilter()">
+      🔍 필터 펼치기 ▾
+    </button>
+    <div class="mobile-sidebar" id="mobileSidebar">
+      <label>카테고리</label>
+      <select id="m_category" multiple></select>
+      <label>섹터</label>
+      <select id="m_sector" multiple></select>
+      <hr class="divider" />
+      <label>From</label>
+      <input type="date" id="m_from" />
+      <label>To</label>
+      <input type="date" id="m_to" />
+      <hr class="divider" />
+      <div class="checkbox-row">
+        <input type="checkbox" id="m_hide_paywall" checked />
+        <label for="m_hide_paywall" style="margin:0">🔒 유료 기사 숨기기</label>
+      </div>
+    </div>
+
+    <header>
+      <h1>🏠 US Residential Intelligence v2</h1>
+      <p>우미글로벌 해외사업팀 | 미국 주거시장 뉴스 수집·분류 대시보드</p>
+    </header>
+
+    <div id="spinner"><div class="spin"></div> 데이터 로딩 중...</div>
+    <div id="app" style="display:none">
+
+      <!-- ⭐ 우미 관련 높음 -->
+      <div class="section">
+        <div class="section-title" id="highTitle">⭐ 우미 관련 높음</div>
+        <div class="tbl-wrap" id="highTable"></div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid #eee;margin-bottom:24px" />
+
+      <!-- 📡 전략 신호 모니터 -->
+      <div class="section">
+        <div class="section-title">📡 전략 신호 모니터</div>
+        <div class="tabs" id="signalTabs">
+          <button class="tab-btn active" data-tab="tab-residential" onclick="switchTab(this)">🏗️ 주거시장 공급·수요</button>
+          <button class="tab-btn" data-tab="tab-cap" onclick="switchTab(this)">💰 자본시장·금리</button>
+          <button class="tab-btn" data-tab="tab-gp" onclick="switchTab(this)">🤝 GP·거래 동향</button>
+          <button class="tab-btn" data-tab="tab-sh" onclick="switchTab(this)">🎓 Student Housing</button>
+        </div>
+        <div class="tab-panel active" id="tab-residential"><div class="tbl-wrap"></div></div>
+        <div class="tab-panel" id="tab-cap"><div class="tbl-wrap"></div></div>
+        <div class="tab-panel" id="tab-gp"><div class="tbl-wrap"></div></div>
+        <div class="tab-panel" id="tab-sh">
+          <div class="sh-toggle">
+            <input type="checkbox" id="shLow" onchange="render()" />
+            <label for="shLow">낮음 기사 포함</label>
+          </div>
+          <div class="tbl-wrap"></div>
+        </div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid #eee;margin-bottom:24px" />
+
+      <!-- 전체 기사 -->
+      <div class="section">
+        <div class="section-title" id="allTitle">전체 기사</div>
+        <div class="tbl-wrap" id="allTable"></div>
+      </div>
+
+    </div><!-- #app -->
+  </main>
+</div>
+
+<script>
+const CSV_URL = "https://raw.githubusercontent.com/jaehongbr-Coding/us-residential-v2/main/articles.csv";
+let allRows = [];
+
+/* ── Helpers ── */
+function isMobile() { return window.innerWidth <= 768; }
+
+function getFilters() {
+  const p = isMobile() ? "m_" : "d_";
+  const cats    = [...document.getElementById(p + "category").selectedOptions].map(o => o.value);
+  const sectors = [...document.getElementById(p + "sector").selectedOptions].map(o => o.value);
+  const from    = document.getElementById(p + "from").value;
+  const to      = document.getElementById(p + "to").value;
+  const hideP   = document.getElementById(p + "hide_paywall").checked;
+  return { cats, sectors, from, to, hideP };
+}
+
+function fmtDate(str) {
+  if (!str) return "";
+  const d = new Date(str);
+  if (isNaN(d)) return "";
+  return (d.getMonth() + 1).toString().padStart(2, "0") + "-" + d.getDate().toString().padStart(2, "0");
+}
+
+function parseDate(str) {
+  if (!str) return null;
+  const d = new Date(str);
+  return isNaN(d) ? null : d;
+}
+
+function truncate(s, n) {
+  if (!s) return "";
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+function hasTag(tags, ...keywords) {
+  const t = (tags || "").toLowerCase();
+  return keywords.some(k => t.includes(k));
+}
+
+/* ── Table builder ── */
+function buildTable(rows) {
+  if (!rows.length) return '<p class="empty-msg">관련 기사 없음</p>';
+  const sorted = [...rows].sort((a, b) => {
+    const da = parseDate(a.published_at), db = parseDate(b.published_at);
+    if (!da && !db) return 0; if (!da) return 1; if (!db) return -1;
+    return db - da;
+  });
+  const trs = sorted.map(r => {
+    const star = r.woomi_relevance === "높음" ? '<span class="star">⭐ </span>' : "";
+    const lock = r.access_limited === "True" ? "🔒 " : "";
+    return `<tr>
+      <td class="col-date">${fmtDate(r.published_at)}</td>
+      <td class="col-title">
+        <a class="title-link" href="${escHtml(r.url)}" target="_blank" rel="noopener">
+          ${star}${lock}${escHtml(r.title)}
+        </a>
+      </td>
+      <td class="col-sector">${escHtml(r.sector)}</td>
+      <td class="col-tags">${escHtml(r.event_tags)}</td>
+      <td class="col-rationale">${escHtml(truncate(r.claude_rationale, 80))}</td>
+    </tr>`;
+  }).join("");
+  return `<table>
+    <thead><tr>
+      <th class="col-date">날짜</th>
+      <th class="col-title">제목</th>
+      <th class="col-sector">섹터</th>
+      <th class="col-tags">태그</th>
+      <th class="col-rationale">분류근거</th>
+    </tr></thead>
+    <tbody>${trs}</tbody>
+  </table>`;
+}
+
+function escHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/* ── Filter logic ── */
+function applyBaseFilters(rows, { cats, sectors, from, to, hideP }) {
+  return rows.filter(r => {
+    if (hideP && r.access_limited === "True") return false;
+    if (cats.length && !cats.includes(r.category)) return false;
+    if (sectors.length && !sectors.includes(r.sector)) return false;
+    const d = parseDate(r.published_at);
+    if (from && d && d < new Date(from)) return false;
+    if (to   && d && d > new Date(to + "T23:59:59")) return false;
+    return true;
+  });
+}
+
+/* ── Render ── */
+function render() {
+  const f = getFilters();
+
+  // Base filtered (with date + category + sector + paywall)
+  const base = applyBaseFilters(allRows, f);
+
+  // ⭐ 우미 관련 높음 (always hide paywall regardless of toggle)
+  const highRows = allRows.filter(r => {
+    if (r.access_limited === "True") return false;
+    if (r.woomi_relevance !== "높음") return false;
+    const d = parseDate(r.published_at);
+    if (f.from && d && d < new Date(f.from)) return false;
+    if (f.to   && d && d > new Date(f.to + "T23:59:59")) return false;
+    return true;
+  });
+  document.getElementById("highTitle").textContent = `⭐ 우미 관련 높음 (${highRows.length}건)`;
+  document.getElementById("highTable").innerHTML = buildTable(highRows);
+
+  // 전략 신호 — date + paywall only (no category/sector sidebar filter)
+  const signalBase = allRows.filter(r => {
+    if (f.hideP && r.access_limited === "True") return false;
+    const d = parseDate(r.published_at);
+    if (f.from && d && d < new Date(f.from)) return false;
+    if (f.to   && d && d > new Date(f.to + "T23:59:59")) return false;
+    return true;
+  });
+
+  const RESIDENTIAL_SECTORS = ["BTR", "SFR", "Multifamily", "Workforce Housing", "Affordable Housing"];
+  const residential = signalBase.filter(r =>
+    RESIDENTIAL_SECTORS.includes(r.sector) ||
+    hasTag(r.event_tags, "rent_occupancy", "construction_start", "delivery", "permit")
+  );
+  const cap = signalBase.filter(r =>
+    hasTag(r.event_tags, "financing") || r.source === "Federal Reserve"
+  );
+  const gp = signalBase.filter(r =>
+    r.category === "GP·자본흐름" &&
+    hasTag(r.event_tags, "transaction", "acquisition", "jv")
+  );
+  const showLow = document.getElementById("shLow").checked;
+  const sh = signalBase.filter(r =>
+    r.sector === "Student Housing" && (showLow || r.woomi_relevance !== "낮음")
+  );
+
+  // Update tab labels
+  const tabBtns = document.querySelectorAll("#signalTabs .tab-btn");
+  tabBtns[0].textContent = `🏗️ 주거시장 공급·수요 (${residential.length}건)`;
+  tabBtns[1].textContent = `💰 자본시장·금리 (${cap.length}건)`;
+  tabBtns[2].textContent = `🤝 GP·거래 동향 (${gp.length}건)`;
+  tabBtns[3].textContent = `🎓 Student Housing (${sh.length}건)`;
+
+  document.querySelector("#tab-residential .tbl-wrap").innerHTML = buildTable(residential);
+  document.querySelector("#tab-cap .tbl-wrap").innerHTML         = buildTable(cap);
+  document.querySelector("#tab-gp .tbl-wrap").innerHTML          = buildTable(gp);
+  document.querySelector("#tab-sh .tbl-wrap").innerHTML          = buildTable(sh);
+
+  // 전체 기사
+  document.getElementById("allTitle").textContent = `전체 기사 (${base.length}건)`;
+  document.getElementById("allTable").innerHTML = buildTable(base);
+}
+
+/* ── Populate filter dropdowns ── */
+function populateSelects(rows) {
+  const uniq = col => [...new Set(rows.map(r => r[col]).filter(Boolean))].sort();
+  ["d_category", "m_category"].forEach(id => {
+    const el = document.getElementById(id);
+    uniq("category").forEach(v => {
+      const o = document.createElement("option"); o.value = v; o.textContent = v; el.appendChild(o);
+    });
+  });
+  ["d_sector", "m_sector"].forEach(id => {
+    const el = document.getElementById(id);
+    uniq("sector").forEach(v => {
+      const o = document.createElement("option"); o.value = v; o.textContent = v; el.appendChild(o);
+    });
+  });
+}
+
+/* ── Default date range (7 days) ── */
+function setDefaultDates() {
+  const today   = new Date();
+  const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7);
+  const fmt = d => d.toISOString().slice(0, 10);
+  ["d_from", "m_from"].forEach(id => document.getElementById(id).value = fmt(weekAgo));
+  ["d_to",   "m_to"  ].forEach(id => document.getElementById(id).value = fmt(today));
+}
+
+/* ── Tab switching ── */
+function switchTab(btn) {
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  btn.classList.add("active");
+  document.getElementById(btn.dataset.tab).classList.add("active");
+}
+
+/* ── Mobile sidebar toggle ── */
+function toggleMobileFilter() {
+  const panel = document.getElementById("mobileSidebar");
+  const btn   = document.getElementById("mobileToggle");
+  const open  = panel.classList.toggle("open");
+  btn.textContent = open ? "🔍 필터 접기 ▴" : "🔍 필터 펼치기 ▾";
+}
+
+/* ── Sync desktop ↔ mobile filter values ── */
+function syncFilters(src) {
+  const pairs = [["d_from","m_from"],["d_to","m_to"],["d_hide_paywall","m_hide_paywall"]];
+  pairs.forEach(([d, m]) => {
+    const [de, me] = [document.getElementById(d), document.getElementById(m)];
+    if (src === "d") me.checked !== undefined ? (me.checked = de.checked) : (me.value = de.value);
+    else             de.checked !== undefined ? (de.checked = me.checked) : (de.value = me.value);
+  });
+}
+
+/* ── Bind filter events ── */
+function bindEvents() {
+  const dIds = ["d_category","d_sector","d_from","d_to","d_hide_paywall"];
+  const mIds = ["m_category","m_sector","m_from","m_to","m_hide_paywall"];
+  dIds.forEach(id => document.getElementById(id).addEventListener("change", () => { syncFilters("d"); render(); }));
+  mIds.forEach(id => document.getElementById(id).addEventListener("change", () => { syncFilters("m"); render(); }));
+}
+
+/* ── Load CSV ── */
+Papa.parse(CSV_URL, {
+  download: true,
+  header: true,
+  skipEmptyLines: true,
+  complete({ data }) {
+    allRows = data;
+    setDefaultDates();
+    populateSelects(allRows);
+    bindEvents();
+    document.getElementById("spinner").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    render();
+  },
+  error(err) {
+    document.getElementById("spinner").innerHTML =
+      `<span style="color:#c00">데이터 로드 실패: ${err.message}</span>`;
+  },
+});
+</script>
+</body>
+</html>
