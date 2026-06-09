@@ -355,6 +355,8 @@ def fetch_feed(source: str, url: str, sector: str) -> list[dict]:
         )
         summary = _clean_html(raw_summary)[:400]
 
+        access_limited = _judge_access_limited(source, link, summary)
+
         articles.append({
             "article_id":    make_article_id(link),
             "collected_at":  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -370,9 +372,30 @@ def fetch_feed(source: str, url: str, sector: str) -> list[dict]:
             "sector":        sector,
             "woomi_relevance": "",
             "claude_rationale": "",
-            "access_limited": len(summary) < 100,
+            "access_limited": access_limited,
         })
     return articles
+
+
+# 소스별 access_limited 판정
+_FREE_SOURCES = {
+    "Federal Reserve", "NMHC", "Urban Land Institute",
+    "Eye on Housing (NAHB)", "Yardi Matrix Blog",
+}
+_FETCH_SOURCES = {"LA Urbanize", "Bisnow", "The Real Deal"}
+
+
+def _judge_access_limited(source: str, url: str, summary: str) -> bool:
+    if source in _FREE_SOURCES:
+        return False
+    if source in _FETCH_SOURCES:
+        try:
+            resp = requests.get(url, headers=REQUEST_HEADERS, timeout=5)
+            text = BeautifulSoup(resp.text, "html.parser").get_text(separator=" ")
+            return len(text.strip()) < 300
+        except Exception:
+            return len(summary) < 100  # fallback
+    return len(summary) < 100
 
 
 # ------------------------------------------------------------------
