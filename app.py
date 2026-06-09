@@ -117,47 +117,56 @@ def sidebar_filters(df: pd.DataFrame):
 # 공통 테이블 렌더링 헬퍼
 # ------------------------------------------------------------------
 
-def _render_table(data: pd.DataFrame, extra_cols: dict = None):
-    """게재일/제목(링크)/섹터/이벤트태그/분류근거 공통 테이블."""
-    if data.empty:
-        st.info("관련 기사 없음")
+def _render_table(df: pd.DataFrame, hide_paywalled: bool = False):
+    """게재일/제목(링크)/섹터/이벤트태그/분류근거 HTML 테이블."""
+    if hide_paywalled:
+        df = df[df["access_limited"].astype(str).str.lower() != "true"]
+
+    if df.empty:
+        st.caption("관련 기사 없음")
         return
 
-    display = data.sort_values("published_at", ascending=False).copy()
-    display["제목_text"] = display["title"]
-    display["링크"] = display["url"]
-    display["게재일"] = display["published_at"].dt.strftime("%Y-%m-%d")
-    display["분류근거"] = display["claude_rationale"].str[:100]
+    df = df.sort_values("published_at", ascending=False)
 
-    base_cols = {
-        "게재일":     "게재일",
-        "제목_text":  "제목",
-        "링크":       "링크",
-        "sector":    "섹터",
-        "event_tags": "이벤트 태그",
-        "분류근거":   "분류근거",
-    }
-    if extra_cols:
-        merged = {}
-        for k, v in base_cols.items():
-            if k == "sector":
-                merged.update(extra_cols)
-            merged[k] = v
-        base_cols = merged
+    rows = ""
+    for _, r in df.iterrows():
+        date      = pd.to_datetime(r["published_at"]).strftime("%m-%d") if pd.notna(r["published_at"]) else ""
+        title     = str(r.get("title", ""))
+        url       = str(r.get("url", ""))
+        sector    = str(r.get("sector", ""))
+        tags      = str(r.get("event_tags", ""))
+        rationale = str(r.get("claude_rationale", ""))[:80]
+        star      = "⭐ " if r.get("woomi_relevance") == "높음" else ""
 
-    st.dataframe(
-        display[list(base_cols.keys())].rename(columns=base_cols),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "게재일":    st.column_config.DateColumn(width=85, format="MM-DD"),
-            "제목":      st.column_config.Column(width="large"),
-            "링크":      st.column_config.LinkColumn("링크", width=60),
-            "섹터":      st.column_config.Column(width=90),
-            "이벤트 태그": st.column_config.Column(width=120),
-            "분류근거":  st.column_config.Column(width="large"),
-        },
-    )
+        rows += f"""
+        <tr>
+          <td style="white-space:nowrap;padding:4px 6px;font-size:12px;color:#888">{date}</td>
+          <td style="padding:4px 6px;font-size:13px;max-width:320px">
+            <a href="{url}" target="_blank" style="text-decoration:none;color:#1a73e8">
+              {star}{title}
+            </a>
+          </td>
+          <td style="white-space:nowrap;padding:4px 6px;font-size:11px;color:#666">{sector}</td>
+          <td style="padding:4px 6px;font-size:11px;color:#666;max-width:140px">{tags}</td>
+          <td style="padding:4px 6px;font-size:11px;color:#555;max-width:240px">{rationale}</td>
+        </tr>
+        """
+
+    html = f"""
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+      <thead>
+        <tr style="border-bottom:1px solid #ddd">
+          <th style="width:48px;padding:4px 6px;font-size:11px;text-align:left">날짜</th>
+          <th style="padding:4px 6px;font-size:11px;text-align:left">제목</th>
+          <th style="width:90px;padding:4px 6px;font-size:11px;text-align:left">섹터</th>
+          <th style="width:140px;padding:4px 6px;font-size:11px;text-align:left">태그</th>
+          <th style="width:240px;padding:4px 6px;font-size:11px;text-align:left">분류근거</th>
+        </tr>
+      </thead>
+      <tbody>{rows}</tbody>
+    </table>
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------
@@ -167,7 +176,6 @@ def _render_table(data: pd.DataFrame, extra_cols: dict = None):
 def high_relevance_section(df: pd.DataFrame, hide_paywalled: bool, date_from, date_to):
     high = df[
         (df["woomi_relevance"] == "높음") &
-        (~df["access_limited"]) &
         (df["published_at"].dt.date >= date_from) &
         (df["published_at"].dt.date <= date_to)
     ].copy()
@@ -178,7 +186,7 @@ def high_relevance_section(df: pd.DataFrame, hide_paywalled: bool, date_from, da
         st.info("이번 주 관련 기사가 없습니다.")
         return
 
-    _render_table(high)
+    _render_table(high, hide_paywalled=True)
 
 
 # ------------------------------------------------------------------
@@ -192,7 +200,7 @@ def article_table(filtered: pd.DataFrame):
         st.info("조건에 맞는 기사가 없습니다.")
         return
 
-    _render_table(filtered)
+    _render_table(filtered, hide_paywalled=False)
 
 
 # ------------------------------------------------------------------
@@ -206,8 +214,6 @@ def signal_monitor_section(df: pd.DataFrame, hide_paywalled: bool, date_from, da
         (df["published_at"].dt.date >= date_from) &
         (df["published_at"].dt.date <= date_to)
     ].copy()
-    if hide_paywalled:
-        base = base[~base["access_limited"]]
 
     def has_tag(series: pd.Series, *tags) -> pd.Series:
         pattern = "|".join(tags)
@@ -240,13 +246,13 @@ def signal_monitor_section(df: pd.DataFrame, hide_paywalled: bool, date_from, da
     ])
 
     with tab1:
-        _render_table(residential)
+        _render_table(residential, hide_paywalled=hide_paywalled)
 
     with tab2:
-        _render_table(cap)
+        _render_table(cap, hide_paywalled=hide_paywalled)
 
     with tab3:
-        _render_table(gp)
+        _render_table(gp, hide_paywalled=hide_paywalled)
 
     with tab4:
         show_low = st.checkbox("낮음 기사 포함", value=False, key="sh_show_low")
@@ -257,7 +263,7 @@ def signal_monitor_section(df: pd.DataFrame, hide_paywalled: bool, date_from, da
         if sh.empty:
             st.info("표시할 기사가 없습니다. '낮음 기사 포함'을 체크하면 전체 확인 가능합니다.")
         else:
-            _render_table(sh)
+            _render_table(sh, hide_paywalled=hide_paywalled)
 
 
 # ------------------------------------------------------------------
