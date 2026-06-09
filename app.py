@@ -217,14 +217,6 @@ def show_student_housing_section(df: pd.DataFrame, hide_paywalled: bool = True):
 
     sh["대학명"] = sh["source"].apply(parse_university)
 
-    # 대학별 집계 테이블
-    univ_total = sh.groupby("대학명").size().rename("기사 수")
-    univ_high  = sh[sh["woomi_relevance"] == "높음"].groupby("대학명").size().rename("높음 건수")
-    univ_stats = pd.concat([univ_total, univ_high], axis=1).fillna(0).astype(int)
-    univ_stats = univ_stats.sort_values("기사 수", ascending=False).reset_index()
-
-    st.dataframe(univ_stats, use_container_width=True, hide_index=True, height=200)
-
     # 낮음 기사 포함 토글
     show_low = st.checkbox("낮음 기사 포함", value=False, key="sh_show_low")
     if not show_low:
