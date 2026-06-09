@@ -52,6 +52,15 @@ woomi_relevance: CSV 저장만, UI 미노출
 - git status
 - git log
 
+## 작업 완료 후 자동 push 규칙
+- 파일 수정이 포함된 모든 작업 완료 시 자동으로 아래 순서 실행:
+  1. git pull --no-rebase
+  2. git add [수정된 파일]
+  3. git commit -m "[작업 내용 요약]"
+  4. git push
+- 별도로 push 여부를 묻지 않고 바로 실행
+- 단, articles.csv는 자동 push 대상에서 제외
+
 ## 자율 진행 허용
 - 함수 rename, 키워드 수정, 우선순위 변경
 - 문법 확인, 분포 집계
