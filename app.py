@@ -55,7 +55,7 @@ def reload():
 # 사이드바 — 필터 + 분류 버튼
 # ------------------------------------------------------------------
 
-def sidebar_filters(df: pd.DataFrame) -> pd.DataFrame:
+def sidebar_filters(df: pd.DataFrame):
     st.sidebar.title("🔍 필터")
 
     def multiselect_filter(label: str, col: str) -> list:
@@ -65,29 +65,22 @@ def sidebar_filters(df: pd.DataFrame) -> pd.DataFrame:
 
     sel_category  = multiselect_filter("카테고리",  "category")
     sel_sector    = multiselect_filter("섹터",      "sector")
-    sel_signal    = multiselect_filter("시그널",    "signal_type")
     sel_source    = multiselect_filter("출처",      "source")
 
     st.sidebar.divider()
 
-    # 날짜 필터
+    # 날짜 필터 — 기본값: 오늘 기준 7일 전 ~ 오늘
     st.sidebar.markdown("**게재일 범위**")
-    min_date = df["published_at"].min()
-    max_date = df["published_at"].max()
+    today     = datetime.now().date()
+    week_ago  = today - timedelta(days=7)
 
-    if pd.isna(min_date):
-        min_date = datetime.now() - timedelta(days=30)
-    if pd.isna(max_date):
-        max_date = datetime.now()
-
-    date_from = st.sidebar.date_input("From", value=min_date.date())
-    date_to   = st.sidebar.date_input("To",   value=max_date.date())
+    date_from = st.sidebar.date_input("From", value=week_ago)
+    date_to   = st.sidebar.date_input("To",   value=today)
 
     # 필터 적용
     filtered = df.copy()
     if sel_category:  filtered = filtered[filtered["category"].isin(sel_category)]
     if sel_sector:    filtered = filtered[filtered["sector"].isin(sel_sector)]
-    if sel_signal:    filtered = filtered[filtered["signal_type"].isin(sel_signal)]
     if sel_source:    filtered = filtered[filtered["source"].isin(sel_source)]
 
     filtered = filtered[
@@ -133,17 +126,17 @@ def sidebar_filters(df: pd.DataFrame) -> pd.DataFrame:
 # ------------------------------------------------------------------
 
 def summary_cards(df: pd.DataFrame, filtered: pd.DataFrame):
-    total       = len(df)
+    total        = len(df)
     unclassified = int((~df["classified"]).sum())
-    high_rel    = int((df["woomi_relevance"] == "높음").sum())
+    high_rel     = int((df["woomi_relevance"] == "높음").sum())
     one_week_ago = datetime.now() - timedelta(days=7)
-    this_week   = int((df["published_at"] >= one_week_ago).sum())
+    this_week    = int((df["published_at"] >= one_week_ago).sum())
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("전체 기사",   f"{total:,}건")
-    c2.metric("미분류",      f"{unclassified:,}건")
+    c1.metric("전체 기사",       f"{total:,}건")
+    c2.metric("미분류",          f"{unclassified:,}건")
     c3.metric("높음 (우미관련)", f"{high_rel:,}건")
-    c4.metric("이번 주 수집", f"{this_week:,}건")
+    c4.metric("이번 주 수집",    f"{this_week:,}건")
 
 
 # ------------------------------------------------------------------
@@ -173,7 +166,6 @@ def article_table(filtered: pd.DataFrame):
         "category":        "카테고리",
         "sector":          "섹터",
         "event_tags":      "이벤트 태그",
-        "signal_type":     "시그널",
         "claude_rationale": "분류 근거",
     }
 
@@ -256,22 +248,6 @@ def show_student_housing_section(df: pd.DataFrame, hide_paywalled: bool = True):
 
 
 # ------------------------------------------------------------------
-# CSV 내보내기
-# ------------------------------------------------------------------
-
-def export_button(filtered: pd.DataFrame):
-    if filtered.empty:
-        return
-    csv_bytes = filtered.to_csv(index=False).encode("utf-8-sig")
-    st.download_button(
-        label="CSV 내보내기",
-        data=csv_bytes,
-        file_name=f"residential_intel_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-        mime="text/csv",
-    )
-
-
-# ------------------------------------------------------------------
 # 메인
 # ------------------------------------------------------------------
 
@@ -289,8 +265,6 @@ def main():
     summary_cards(df, filtered)
     st.divider()
     article_table(filtered)
-    st.divider()
-    export_button(filtered)
     st.divider()
     show_student_housing_section(df, hide_paywalled)
 
