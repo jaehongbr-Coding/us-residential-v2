@@ -35,11 +35,9 @@ def load_data() -> pd.DataFrame:
 
     df = pd.read_csv(ARTICLES_CSV, dtype=str).fillna("")
 
-    # 날짜 컬럼 변환
     for col in ("collected_at", "published_at"):
         df[col] = pd.to_datetime(df[col], errors="coerce")
 
-    # bool 변환
     df["classified"]    = df["classified"].str.lower() == "true"
     df["access_limited"] = df["access_limited"].str.lower() == "true"
 
@@ -63,25 +61,21 @@ def sidebar_filters(df: pd.DataFrame):
         options = [o for o in options if o != ""]
         return st.sidebar.multiselect(label, options, default=[])
 
-    sel_category  = multiselect_filter("카테고리",  "category")
-    sel_sector    = multiselect_filter("섹터",      "sector")
-    sel_source    = multiselect_filter("출처",      "source")
+    sel_category = multiselect_filter("카테고리", "category")
+    sel_sector   = multiselect_filter("섹터",     "sector")
 
     st.sidebar.divider()
 
-    # 날짜 필터 — 기본값: 오늘 기준 7일 전 ~ 오늘
     st.sidebar.markdown("**게재일 범위**")
-    today     = datetime.now().date()
-    week_ago  = today - timedelta(days=7)
+    today    = datetime.now().date()
+    week_ago = today - timedelta(days=7)
 
     date_from = st.sidebar.date_input("From", value=week_ago)
     date_to   = st.sidebar.date_input("To",   value=today)
 
-    # 필터 적용
     filtered = df.copy()
-    if sel_category:  filtered = filtered[filtered["category"].isin(sel_category)]
-    if sel_sector:    filtered = filtered[filtered["sector"].isin(sel_sector)]
-    if sel_source:    filtered = filtered[filtered["source"].isin(sel_source)]
+    if sel_category: filtered = filtered[filtered["category"].isin(sel_category)]
+    if sel_sector:   filtered = filtered[filtered["sector"].isin(sel_sector)]
 
     filtered = filtered[
         (filtered["published_at"].dt.date >= date_from) &
@@ -90,14 +84,12 @@ def sidebar_filters(df: pd.DataFrame):
 
     st.sidebar.divider()
 
-    # 유료 기사 필터
     hide_paywalled = st.sidebar.checkbox("🔒 유료 기사 숨기기", value=True)
     if hide_paywalled:
         filtered = filtered[~filtered["access_limited"]]
 
     st.sidebar.divider()
 
-    # 분류 실행 버튼
     st.sidebar.markdown("**분류 실행**")
     unclassified_count = int((~df["classified"]).sum())
 
@@ -122,6 +114,51 @@ def sidebar_filters(df: pd.DataFrame):
 
 
 # ------------------------------------------------------------------
+# 공통 테이블 렌더링 헬퍼
+# ------------------------------------------------------------------
+
+def _render_table(data: pd.DataFrame, extra_cols: dict = None):
+    """게재일/제목(링크)/섹터/이벤트태그/분류근거 공통 테이블."""
+    if data.empty:
+        st.info("관련 기사 없음")
+        return
+
+    display = data.copy()
+    display["제목"] = "[" + display["title"] + "](" + display["url"] + ")"
+    display["게재일"] = display["published_at"].dt.strftime("%Y-%m-%d")
+    display["분류근거"] = display["claude_rationale"].str[:100]
+
+    base_cols = {
+        "게재일":    "게재일",
+        "제목":      "제목",
+        "sector":   "섹터",
+        "event_tags": "이벤트 태그",
+        "분류근거":  "분류근거",
+    }
+    if extra_cols:
+        # extra_cols를 섹터 앞에 삽입
+        merged = {}
+        for k, v in base_cols.items():
+            if k == "sector":
+                merged.update(extra_cols)
+            merged[k] = v
+        base_cols = merged
+
+    st.dataframe(
+        display[list(base_cols.keys())].rename(columns=base_cols),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "게재일":    st.column_config.Column(width="small"),
+            "제목":      st.column_config.Column(width="large"),
+            "섹터":      st.column_config.Column(width="small"),
+            "이벤트 태그": st.column_config.Column(width="medium"),
+            "분류근거":  st.column_config.Column(width="large"),
+        },
+    )
+
+
+# ------------------------------------------------------------------
 # 우미 관련 높음 섹션
 # ------------------------------------------------------------------
 
@@ -139,32 +176,7 @@ def high_relevance_section(df: pd.DataFrame, hide_paywalled: bool, date_from, da
         st.info("이번 주 관련 기사가 없습니다.")
         return
 
-    high["제목"] = high.apply(
-        lambda r: f"{'🔒 ' if r['access_limited'] else ''}{r['title']}",
-        axis=1,
-    )
-    high["게재일"] = high["published_at"].dt.strftime("%Y-%m-%d")
-
-    cols = {
-        "게재일":           "게재일",
-        "source":          "출처",
-        "제목":            "제목",
-        "url":             "원문",
-        "sector":          "섹터",
-        "event_tags":      "이벤트 태그",
-        "claude_rationale": "분류 근거",
-    }
-
-    st.dataframe(
-        high[list(cols.keys())].rename(columns=cols),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "제목": st.column_config.Column(width="large"),
-            "원문": st.column_config.LinkColumn(display_text="🔗 링크", width="small"),
-            "분류 근거": st.column_config.Column(width="large"),
-        },
-    )
+    _render_table(high)
 
 
 # ------------------------------------------------------------------
@@ -178,67 +190,12 @@ def article_table(filtered: pd.DataFrame):
         st.info("조건에 맞는 기사가 없습니다.")
         return
 
-    display = filtered.copy()
-
-    display["제목"] = display.apply(
-        lambda r: f"{'🔒 ' if r['access_limited'] else ''}{r['title']}",
-        axis=1,
-    )
-    display["게재일"] = display["published_at"].dt.strftime("%Y-%m-%d")
-
-    cols = {
-        "게재일":           "게재일",
-        "source":          "출처",
-        "제목":            "제목",
-        "url":             "원문",
-        "category":        "카테고리",
-        "sector":          "섹터",
-        "event_tags":      "이벤트 태그",
-        "claude_rationale": "분류 근거",
-    }
-
-    st.dataframe(
-        display[list(cols.keys())].rename(columns=cols),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "제목": st.column_config.Column(width="large"),
-            "원문": st.column_config.LinkColumn(
-                display_text="🔗 링크",
-                width="small",
-            ),
-            "분류 근거": st.column_config.Column(width="large"),
-        },
-    )
+    _render_table(filtered)
 
 
 # ------------------------------------------------------------------
-# 전략 신호 모니터
+# 전략 신호 모니터 (4개 탭)
 # ------------------------------------------------------------------
-
-def _signal_table(data: pd.DataFrame):
-    """공통 기사 테이블 렌더링."""
-    if data.empty:
-        st.info("관련 기사 없음")
-        return
-    display = data.copy()
-    display["제목"]  = display.apply(
-        lambda r: f"{'🔒 ' if r['access_limited'] else ''}{r['title']}", axis=1)
-    display["게재일"] = display["published_at"].dt.strftime("%Y-%m-%d")
-    cols = {
-        "게재일": "게재일", "source": "출처", "제목": "제목",
-        "url": "원문", "event_tags": "이벤트 태그", "claude_rationale": "분류 근거",
-    }
-    st.dataframe(
-        display[list(cols.keys())].rename(columns=cols),
-        use_container_width=True, hide_index=True,
-        column_config={
-            "제목": st.column_config.Column(width="large"),
-            "원문": st.column_config.LinkColumn(display_text="🔗 링크", width="small"),
-            "분류 근거": st.column_config.Column(width="large"),
-        },
-    )
-
 
 def signal_monitor_section(df: pd.DataFrame, hide_paywalled: bool, date_from, date_to):
     st.markdown("### 📡 전략 신호 모니터")
@@ -251,96 +208,54 @@ def signal_monitor_section(df: pd.DataFrame, hide_paywalled: bool, date_from, da
         base = base[~base["access_limited"]]
 
     def has_tag(series: pd.Series, *tags) -> pd.Series:
-        """event_tags 컬럼에 지정 태그 중 하나라도 포함되는지 확인."""
         pattern = "|".join(tags)
         return series.str.contains(pattern, na=False)
 
-    # 탭별 필터
-    btr = base[
-        base["sector"].isin(["BTR", "SFR"]) |
-        has_tag(base["event_tags"], "rent_occupancy", "construction_start")
+    residential_sectors = ["BTR", "SFR", "Multifamily", "Workforce Housing", "Affordable Housing"]
+    residential = base[
+        base["sector"].isin(residential_sectors) |
+        has_tag(base["event_tags"], "rent_occupancy", "construction_start", "delivery", "permit")
     ]
+
     cap = base[
         (base["sector"] == "Multifamily") & has_tag(base["event_tags"], "financing") |
         (base["source"] == "Federal Reserve")
     ]
+
     gp = base[
         (base["category"] == "GP·자본흐름") &
         base["sector"].isin(["BTR", "Multifamily"]) &
         has_tag(base["event_tags"], "transaction", "acquisition", "JV")
     ]
 
-    tab1, tab2, tab3 = st.tabs([
-        f"🏗️ BTR 공급·수요 ({len(btr)}건)",
+    sh_base = base[base["sector"] == "Student Housing"].copy()
+
+    tab1, tab2, tab3, tab4 = st.tabs([
+        f"🏗️ 주거시장 공급·수요 ({len(residential)}건)",
         f"💰 자본시장·금리 ({len(cap)}건)",
         f"🤝 GP·거래 동향 ({len(gp)}건)",
+        f"🎓 Student Housing ({len(sh_base)}건)",
     ])
-    with tab1: _signal_table(btr)
-    with tab2: _signal_table(cap)
-    with tab3: _signal_table(gp)
 
+    with tab1:
+        _render_table(residential)
 
-# ------------------------------------------------------------------
-# Student Housing 모니터
-# ------------------------------------------------------------------
+    with tab2:
+        _render_table(cap)
 
-def show_student_housing_section(df: pd.DataFrame, hide_paywalled: bool = True):
-    st.markdown("### 🎓 Student Housing 모니터")
+    with tab3:
+        _render_table(gp)
 
-    sh = df[df["sector"] == "Student Housing"].copy()
-    if hide_paywalled:
-        sh = sh[~sh["access_limited"]]
+    with tab4:
+        show_low = st.checkbox("낮음 기사 포함", value=False, key="sh_show_low")
+        sh = sh_base.copy()
+        if not show_low:
+            sh = sh[sh["woomi_relevance"] != "낮음"]
 
-    if sh.empty:
-        st.info("Student Housing 기사가 없습니다.")
-        return
-
-    # 대학명 추출: "Student Housing — {name} ({state})" → name
-    def parse_university(source: str) -> str:
-        try:
-            after = source.split("Student Housing — ", 1)[1]
-            return after.rsplit(" (", 1)[0]
-        except (IndexError, ValueError):
-            return source
-
-    sh["대학명"] = sh["source"].apply(parse_university)
-
-    # 낮음 기사 포함 토글
-    show_low = st.checkbox("낮음 기사 포함", value=False, key="sh_show_low")
-    if not show_low:
-        sh = sh[sh["woomi_relevance"] != "낮음"]
-
-    if sh.empty:
-        st.info("표시할 기사가 없습니다. '낮음 기사 포함'을 체크하면 전체 확인 가능합니다.")
-        return
-
-    # 기사 테이블 (woomi_relevance == "높음" 이면 ⭐)
-    sh["제목"] = sh.apply(
-        lambda r: f"{'⭐ ' if r['woomi_relevance'] == '높음' else ''}{'🔒 ' if r['access_limited'] else ''}{r['title']}",
-        axis=1,
-    )
-    sh["게재일"] = sh["published_at"].dt.strftime("%Y-%m-%d")
-
-    cols = {
-        "게재일":           "게재일",
-        "대학명":           "대학",
-        "제목":            "제목",
-        "url":             "원문",
-        "event_tags":      "이벤트 태그",
-        "woomi_relevance": "우미 관련도",
-        "claude_rationale": "분류 근거",
-    }
-
-    st.dataframe(
-        sh[list(cols.keys())].rename(columns=cols),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "제목": st.column_config.Column(width="large"),
-            "원문": st.column_config.LinkColumn(display_text="🔗 링크", width="small"),
-            "분류 근거": st.column_config.Column(width="large"),
-        },
-    )
+        if sh.empty:
+            st.info("표시할 기사가 없습니다. '낮음 기사 포함'을 체크하면 전체 확인 가능합니다.")
+        else:
+            _render_table(sh)
 
 
 # ------------------------------------------------------------------
@@ -363,8 +278,6 @@ def main():
     signal_monitor_section(df, hide_paywalled, date_from, date_to)
     st.divider()
     article_table(filtered)
-    st.divider()
-    show_student_housing_section(df, hide_paywalled)
 
 
 if __name__ == "__main__":
