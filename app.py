@@ -118,25 +118,53 @@ def sidebar_filters(df: pd.DataFrame):
             except RuntimeError as e:
                 st.sidebar.error(str(e))
 
-    return filtered, hide_paywalled
+    return filtered, hide_paywalled, date_from, date_to
 
 
 # ------------------------------------------------------------------
-# 상단 요약 카드
+# 우미 관련 높음 섹션
 # ------------------------------------------------------------------
 
-def summary_cards(df: pd.DataFrame, filtered: pd.DataFrame):
-    total        = len(df)
-    unclassified = int((~df["classified"]).sum())
-    high_rel     = int((df["woomi_relevance"] == "높음").sum())
-    one_week_ago = datetime.now() - timedelta(days=7)
-    this_week    = int((df["published_at"] >= one_week_ago).sum())
+def high_relevance_section(df: pd.DataFrame, hide_paywalled: bool, date_from, date_to):
+    high = df[
+        (df["woomi_relevance"] == "높음") &
+        (~df["access_limited"]) &
+        (df["published_at"].dt.date >= date_from) &
+        (df["published_at"].dt.date <= date_to)
+    ].copy()
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("전체 기사",       f"{total:,}건")
-    c2.metric("미분류",          f"{unclassified:,}건")
-    c3.metric("높음 (우미관련)", f"{high_rel:,}건")
-    c4.metric("이번 주 수집",    f"{this_week:,}건")
+    st.markdown(f"### ⭐ 우미 관련 높음 ({len(high):,}건)")
+
+    if high.empty:
+        st.info("이번 주 관련 기사가 없습니다.")
+        return
+
+    high["제목"] = high.apply(
+        lambda r: f"{'🔒 ' if r['access_limited'] else ''}{r['title']}",
+        axis=1,
+    )
+    high["게재일"] = high["published_at"].dt.strftime("%Y-%m-%d")
+
+    cols = {
+        "게재일":           "게재일",
+        "source":          "출처",
+        "제목":            "제목",
+        "url":             "원문",
+        "sector":          "섹터",
+        "event_tags":      "이벤트 태그",
+        "claude_rationale": "분류 근거",
+    }
+
+    st.dataframe(
+        high[list(cols.keys())].rename(columns=cols),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "제목": st.column_config.Column(width="large"),
+            "원문": st.column_config.LinkColumn(display_text="🔗 링크", width="small"),
+            "분류 근거": st.column_config.Column(width="large"),
+        },
+    )
 
 
 # ------------------------------------------------------------------
@@ -144,7 +172,7 @@ def summary_cards(df: pd.DataFrame, filtered: pd.DataFrame):
 # ------------------------------------------------------------------
 
 def article_table(filtered: pd.DataFrame):
-    st.markdown(f"### 기사 목록 ({len(filtered):,}건)")
+    st.markdown("### 전체 기사")
 
     if filtered.empty:
         st.info("조건에 맞는 기사가 없습니다.")
@@ -261,8 +289,8 @@ def main():
         st.warning("articles.csv가 없습니다. 먼저 `python collector.py`를 실행하세요.")
         return
 
-    filtered, hide_paywalled = sidebar_filters(df)
-    summary_cards(df, filtered)
+    filtered, hide_paywalled, date_from, date_to = sidebar_filters(df)
+    high_relevance_section(df, hide_paywalled, date_from, date_to)
     st.divider()
     article_table(filtered)
     st.divider()
