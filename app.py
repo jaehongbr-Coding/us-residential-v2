@@ -123,20 +123,21 @@ def _render_table(data: pd.DataFrame, extra_cols: dict = None):
         st.info("관련 기사 없음")
         return
 
-    display = data.copy()
-    display["제목"] = "[" + display["title"] + "](" + display["url"] + ")"
+    display = data.sort_values("published_at", ascending=False).copy()
+    display["제목_text"] = display["title"]
+    display["링크"] = display["url"]
     display["게재일"] = display["published_at"].dt.strftime("%Y-%m-%d")
     display["분류근거"] = display["claude_rationale"].str[:100]
 
     base_cols = {
-        "게재일":    "게재일",
-        "제목":      "제목",
-        "sector":   "섹터",
+        "게재일":     "게재일",
+        "제목_text":  "제목",
+        "링크":       "링크",
+        "sector":    "섹터",
         "event_tags": "이벤트 태그",
-        "분류근거":  "분류근거",
+        "분류근거":   "분류근거",
     }
     if extra_cols:
-        # extra_cols를 섹터 앞에 삽입
         merged = {}
         for k, v in base_cols.items():
             if k == "sector":
@@ -149,10 +150,11 @@ def _render_table(data: pd.DataFrame, extra_cols: dict = None):
         use_container_width=True,
         hide_index=True,
         column_config={
-            "게재일":    st.column_config.Column(width="small"),
+            "게재일":    st.column_config.DateColumn(width=85, format="MM-DD"),
             "제목":      st.column_config.Column(width="large"),
-            "섹터":      st.column_config.Column(width="small"),
-            "이벤트 태그": st.column_config.Column(width="medium"),
+            "링크":      st.column_config.LinkColumn("링크", width=60),
+            "섹터":      st.column_config.Column(width=90),
+            "이벤트 태그": st.column_config.Column(width=120),
             "분류근거":  st.column_config.Column(width="large"),
         },
     )
