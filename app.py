@@ -118,7 +118,7 @@ def sidebar_filters(df: pd.DataFrame):
 # ------------------------------------------------------------------
 
 def _render_table(df: pd.DataFrame, hide_paywalled: bool = False):
-    """게재일/제목(링크)/섹터/이벤트태그/분류근거 HTML 테이블."""
+    """게재일/제목/링크/섹터/이벤트태그/분류근거 st.dataframe 테이블."""
     if hide_paywalled:
         df = df[df["access_limited"].astype(str).str.lower() != "true"]
 
@@ -126,47 +126,27 @@ def _render_table(df: pd.DataFrame, hide_paywalled: bool = False):
         st.caption("관련 기사 없음")
         return
 
-    df = df.sort_values("published_at", ascending=False)
+    display = df.sort_values("published_at", ascending=False).copy()
+    display["게재일"]   = display["published_at"]
+    display["제목_표시"] = display["title"]
+    display["제목"]     = display["url"]
+    display["분류근거"] = display["claude_rationale"].str[:100]
 
-    rows = ""
-    for _, r in df.iterrows():
-        date      = pd.to_datetime(r["published_at"]).strftime("%m-%d") if pd.notna(r["published_at"]) else ""
-        title     = str(r.get("title", ""))
-        url       = str(r.get("url", ""))
-        sector    = str(r.get("sector", ""))
-        tags      = str(r.get("event_tags", ""))
-        rationale = str(r.get("claude_rationale", ""))[:80]
-        star      = "⭐ " if r.get("woomi_relevance") == "높음" else ""
-
-        rows += f"""
-        <tr>
-          <td style="white-space:nowrap;padding:4px 6px;font-size:12px;color:#888">{date}</td>
-          <td style="padding:4px 6px;font-size:13px;max-width:320px">
-            <a href="{url}" target="_blank" style="text-decoration:none;color:#1a73e8">
-              {star}{title}
-            </a>
-          </td>
-          <td style="white-space:nowrap;padding:4px 6px;font-size:11px;color:#666">{sector}</td>
-          <td style="padding:4px 6px;font-size:11px;color:#666;max-width:140px">{tags}</td>
-          <td style="padding:4px 6px;font-size:11px;color:#555;max-width:240px">{rationale}</td>
-        </tr>
-        """
-
-    html = f"""
-    <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-      <thead>
-        <tr style="border-bottom:1px solid #ddd">
-          <th style="width:48px;padding:4px 6px;font-size:11px;text-align:left">날짜</th>
-          <th style="padding:4px 6px;font-size:11px;text-align:left">제목</th>
-          <th style="width:90px;padding:4px 6px;font-size:11px;text-align:left">섹터</th>
-          <th style="width:140px;padding:4px 6px;font-size:11px;text-align:left">태그</th>
-          <th style="width:240px;padding:4px 6px;font-size:11px;text-align:left">분류근거</th>
-        </tr>
-      </thead>
-      <tbody>{rows}</tbody>
-    </table>
-    """
-    st.markdown(html, unsafe_allow_html=True)
+    st.dataframe(
+        display[["게재일", "제목_표시", "제목", "sector", "event_tags", "분류근거"]].rename(
+            columns={"sector": "섹터", "event_tags": "이벤트 태그"}
+        ),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "게재일":    st.column_config.DateColumn("게재일", width=60, format="MM-DD"),
+            "제목_표시": st.column_config.Column("제목", width="large"),
+            "제목":      st.column_config.LinkColumn("🔗", width=40),
+            "섹터":      st.column_config.Column(width=100),
+            "이벤트 태그": st.column_config.Column(width=150),
+            "분류근거":  st.column_config.Column(width=250),
+        },
+    )
 
 
 # ------------------------------------------------------------------
