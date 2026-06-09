@@ -78,17 +78,17 @@ event_tags rules:
 woomi_relevance rules (apply differently by category):
 
 [GP·자본흐름 category]
-- "높음": niche sector M&A, platform acquisition, or fund formation (BTR/Student Housing/Senior/Workforce/SFR); direct mention of Kennedy Wilson/Blue Vista/Lionheart/Middleburg/Hillpointe/Core Spaces/NexMetro; portfolio deal $50M+; Korean or Japanese capital in US residential; JV/Co-GP/development partnership structure
+- "높음": niche sector M&A, platform acquisition, or fund formation (BTR/Student Housing/Senior/Workforce/SFR); direct mention of Kennedy Wilson/Blue Vista/Lionheart/Middleburg/Hillpointe/Core Spaces/NexMetro/Mavrek/Christopher Todd/Continental; portfolio deal $30M+; Korean or Japanese capital in US residential (treat equally); JV/Co-GP/development partnership structure; BTR platform M&A or operator acquisition; vertically integrated developer activity; mid-market BTR deal or buyer profile article; LP fund exit pressure or capital recovery acceleration
 - "보통": single-asset MF transaction, small-to-mid-size fund
 - "낮음": sub-$20M single asset deal, out-of-focus sector
 
 [시장 category]
-- "높음": Fed rate decision or mortgage rate movement; national or Sun Belt new-supply rent/absorption trend; housing supply policy (zoning reform, YIMBY, LIHTC); national multifamily starts or permits data
+- "높음": Fed rate decision or mortgage rate movement; national or Sun Belt new-supply rent/absorption trend; housing supply policy (zoning reform, YIMBY, LIHTC); national multifamily starts or permits data; BTR/SFR tenant retention rate or average tenure data; BTR oversupply or absorption slowdown signal; family renter demand or long-term lease preference data; Sun Belt BTR starts/permits/absorption data
 - "보통": single-city rent trend or demand data
 - "낮음": simple regional stat, individual building leasing update
 
 [개발 category]
-- "높음": confirmed groundbreaking or broke-ground article; permit filing or zoning approval; development in LA/Atlanta/Dallas/Houston/Phoenix; BTR or Student Housing project
+- "높음": confirmed groundbreaking or broke-ground article; permit filing or zoning approval; development in LA/Atlanta/Dallas/Houston/Phoenix; BTR or Student Housing project; BTR/SFR groundbreaking, permit, or completion; suburban Atlanta/Dallas/Houston residential development
 - "보통": general MF development plan announcement in other markets
 - "낮음": vague development intent, speculative land acquisition article
 

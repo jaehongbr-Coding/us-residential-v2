@@ -213,6 +213,74 @@ def article_table(filtered: pd.DataFrame):
 
 
 # ------------------------------------------------------------------
+# 전략 신호 모니터
+# ------------------------------------------------------------------
+
+def _signal_table(data: pd.DataFrame):
+    """공통 기사 테이블 렌더링."""
+    if data.empty:
+        st.info("관련 기사 없음")
+        return
+    display = data.copy()
+    display["제목"]  = display.apply(
+        lambda r: f"{'🔒 ' if r['access_limited'] else ''}{r['title']}", axis=1)
+    display["게재일"] = display["published_at"].dt.strftime("%Y-%m-%d")
+    cols = {
+        "게재일": "게재일", "source": "출처", "제목": "제목",
+        "url": "원문", "event_tags": "이벤트 태그", "claude_rationale": "분류 근거",
+    }
+    st.dataframe(
+        display[list(cols.keys())].rename(columns=cols),
+        use_container_width=True, hide_index=True,
+        column_config={
+            "제목": st.column_config.Column(width="large"),
+            "원문": st.column_config.LinkColumn(display_text="🔗 링크", width="small"),
+            "분류 근거": st.column_config.Column(width="large"),
+        },
+    )
+
+
+def signal_monitor_section(df: pd.DataFrame, hide_paywalled: bool, date_from, date_to):
+    st.markdown("### 📡 전략 신호 모니터")
+
+    base = df[
+        (df["published_at"].dt.date >= date_from) &
+        (df["published_at"].dt.date <= date_to)
+    ].copy()
+    if hide_paywalled:
+        base = base[~base["access_limited"]]
+
+    def has_tag(series: pd.Series, *tags) -> pd.Series:
+        """event_tags 컬럼에 지정 태그 중 하나라도 포함되는지 확인."""
+        pattern = "|".join(tags)
+        return series.str.contains(pattern, na=False)
+
+    # 탭별 필터
+    btr = base[
+        base["sector"].isin(["BTR", "SFR"]) |
+        has_tag(base["event_tags"], "rent_occupancy", "construction_start")
+    ]
+    cap = base[
+        (base["sector"] == "Multifamily") & has_tag(base["event_tags"], "financing") |
+        (base["source"] == "Federal Reserve")
+    ]
+    gp = base[
+        (base["category"] == "GP·자본흐름") &
+        base["sector"].isin(["BTR", "Multifamily"]) &
+        has_tag(base["event_tags"], "transaction", "acquisition", "JV")
+    ]
+
+    tab1, tab2, tab3 = st.tabs([
+        f"🏗️ BTR 공급·수요 ({len(btr)}건)",
+        f"💰 자본시장·금리 ({len(cap)}건)",
+        f"🤝 GP·거래 동향 ({len(gp)}건)",
+    ])
+    with tab1: _signal_table(btr)
+    with tab2: _signal_table(cap)
+    with tab3: _signal_table(gp)
+
+
+# ------------------------------------------------------------------
 # Student Housing 모니터
 # ------------------------------------------------------------------
 
@@ -291,6 +359,8 @@ def main():
 
     filtered, hide_paywalled, date_from, date_to = sidebar_filters(df)
     high_relevance_section(df, hide_paywalled, date_from, date_to)
+    st.divider()
+    signal_monitor_section(df, hide_paywalled, date_from, date_to)
     st.divider()
     article_table(filtered)
     st.divider()
