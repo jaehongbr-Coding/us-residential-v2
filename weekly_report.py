@@ -197,119 +197,201 @@ def _strip_md_bold(text: str) -> str:
 
 
 def save_report_docx(md_content: str, period: str) -> str:
-    """마크다운 리포트를 .docx 로 저장한다."""
+    """마크다운 리포트를 우미글로벌 양식 .docx 로 저장한다."""
     try:
         from docx import Document
-        from docx.shared import Pt, RGBColor
+        from docx.shared import Pt, RGBColor, Cm
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
         from docx.oxml.ns import qn
         from docx.oxml import OxmlElement
     except ImportError:
         raise RuntimeError("python-docx가 설치되지 않았습니다. pip install python-docx 를 실행하세요.")
 
-    doc = Document()
-
-    FONT_KO = "맑은 고딕"
-
-    def _set_font(run, size_pt, bold=False, color=None):
-        run.font.name = FONT_KO
-        run.font.size = Pt(size_pt)
-        run.font.bold = bold
-        run._element.rPr.rFonts.set(qn("w:eastAsia"), FONT_KO)
-        if color:
-            run.font.color.rgb = RGBColor(*color)
-
-    def _add_hr(doc):
-        p = doc.add_paragraph()
-        pPr = p._p.get_or_add_pPr()
-        pBdr = OxmlElement("w:pBdr")
-        bottom = OxmlElement("w:bottom")
-        bottom.set(qn("w:val"), "single")
-        bottom.set(qn("w:sz"), "6")
-        bottom.set(qn("w:space"), "1")
-        bottom.set(qn("w:color"), "AAAAAA")
-        pBdr.append(bottom)
-        pPr.append(pBdr)
-        return p
+    # ── 색상 상수 ──────────────────────────────────────────────
+    C_NAVY   = RGBColor(0x1B, 0x3A, 0x5C)   # 진네이비
+    C_BLUE   = RGBColor(0x2E, 0x75, 0xB6)   # 섹션 헤딩
+    C_GREY   = RGBColor(0x99, 0x99, 0x99)   # 보조 텍스트
+    C_WHITE  = RGBColor(0xFF, 0xFF, 0xFF)
+    FONT     = "Noto Sans KR"
 
     days      = PERIOD_DAYS[period]
     date_from = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
     date_to   = datetime.now().strftime("%Y-%m-%d")
-    generated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    year_month = datetime.now().strftime("%Y년 %-m월") if os.name != "nt" else datetime.now().strftime("%Y년 %#m월")
 
-    # 제목
-    title_para = doc.add_paragraph()
-    title_run  = title_para.add_run(f"US Residential Intelligence — {PERIOD_LABEL[period]} 리포트")
-    _set_font(title_run, 16, bold=True)
+    # ── 헬퍼 ──────────────────────────────────────────────────
+    def _run(para, text, size_pt=10, bold=False, color=None, italic=False):
+        run = para.add_run(text)
+        run.font.name  = FONT
+        run.font.size  = Pt(size_pt)
+        run.font.bold  = bold
+        run.font.italic = italic
+        run._element.get_or_add_rPr().get_or_add_rFonts().set(qn("w:eastAsia"), FONT)
+        if color:
+            run.font.color.rgb = color
+        return run
 
-    # 메타
-    meta_para = doc.add_paragraph()
-    meta_run  = meta_para.add_run(
-        f"기간: {date_from} ~ {date_to}  |  생성: {generated}"
-    )
-    _set_font(meta_run, 10, color=(120, 120, 120))
+    def _para(doc, align=None):
+        p = doc.add_paragraph()
+        if align:
+            p.alignment = align
+        return p
 
-    _add_hr(doc)
+    def _heading_border(para, color_hex="1B3A5C"):
+        """단락 아래에 얇은 보더 추가."""
+        pPr  = para._p.get_or_add_pPr()
+        pBdr = OxmlElement("w:pBdr")
+        bot  = OxmlElement("w:bottom")
+        bot.set(qn("w:val"), "single")
+        bot.set(qn("w:sz"), "4")
+        bot.set(qn("w:space"), "1")
+        bot.set(qn("w:color"), color_hex)
+        pBdr.append(bot)
+        pPr.append(pBdr)
 
-    # 본문 파싱
+    def _page_break(doc):
+        p   = doc.add_paragraph()
+        run = p.add_run()
+        run.add_break(__import__("docx.enum.text", fromlist=["WD_BREAK"]).WD_BREAK.PAGE)
+
+    def _add_bold_runs(para, text, size_pt=10, base_color=None):
+        """**bold** 구간을 run 분리해 추가한다."""
+        parts = re.split(r"(\*\*.+?\*\*)", text)
+        for part in parts:
+            if part.startswith("**") and part.endswith("**"):
+                _run(para, part[2:-2], size_pt=size_pt, bold=True, color=base_color)
+            else:
+                _run(para, part, size_pt=size_pt, color=base_color)
+
+    # ── 페이지 설정 (A4, 1인치 여백) ──────────────────────────
+    doc = Document()
+    section = doc.sections[0]
+    section.page_width   = 11906   # DXA
+    section.page_height  = 16838
+    for attr in ("left_margin", "right_margin", "top_margin", "bottom_margin"):
+        setattr(section, attr, 1440)  # 1인치
+    section.header_distance = 708
+    section.footer_distance = 708
+
+    # ── 헤더 ──────────────────────────────────────────────────
+    header = section.header
+    hp = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
+    hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    for run in hp.runs:
+        run.clear()
+    _run(hp, "우미글로벌 해외사업팀 | 대외비", size_pt=10, color=C_GREY)
+    _heading_border(hp)
+
+    # ── 푸터 ──────────────────────────────────────────────────
+    footer = section.footer
+    fp = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
+    fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # 페이지 번호 필드
+    fldChar1 = OxmlElement("w:fldChar"); fldChar1.set(qn("w:fldCharType"), "begin")
+    instrText = OxmlElement("w:instrText"); instrText.text = "PAGE"
+    fldChar2  = OxmlElement("w:fldChar"); fldChar2.set(qn("w:fldCharType"), "separate")
+    fldChar3  = OxmlElement("w:fldChar"); fldChar3.set(qn("w:fldCharType"), "end")
+    fr = fp.add_run()
+    for el in (fldChar1, instrText, fldChar2, fldChar3):
+        fr._r.append(el)
+    fr.font.size = Pt(9)
+    fr.font.name = FONT
+    # 작성 연월 우측
+    fp.add_run("\t\t")
+    _run(fp, year_month, size_pt=9, color=C_GREY)
+
+    # ── 표지 ──────────────────────────────────────────────────
+    doc.add_paragraph()
+    doc.add_paragraph()
+    doc.add_paragraph()
+
+    p_company = _para(doc, WD_ALIGN_PARAGRAPH.CENTER)
+    _run(p_company, "우미글로벌 해외사업팀", size_pt=16, bold=True, color=C_NAVY)
+
+    doc.add_paragraph()
+
+    p_title = _para(doc, WD_ALIGN_PARAGRAPH.CENTER)
+    _run(p_title, f"미국 주거시장 {PERIOD_LABEL[period]} 인텔리전스 리포트", size_pt=20, bold=True)
+
+    doc.add_paragraph()
+
+    p_meta = _para(doc, WD_ALIGN_PARAGRAPH.CENTER)
+    _run(p_meta, f"기간: {date_from} ~ {date_to}", size_pt=10, color=C_GREY)
+
+    doc.add_paragraph()
+
+    p_date = _para(doc, WD_ALIGN_PARAGRAPH.CENTER)
+    _run(p_date, f"작성일: {datetime.now().strftime('%Y년 %m월 %d일')}  |  해외사업팀", size_pt=10, color=C_GREY)
+
+    # 표지 뒤 페이지 구분
+    from docx.oxml import OxmlElement as OE
+    p_br = doc.add_paragraph()
+    run_br = p_br.add_run()
+    br = OE("w:br")
+    br.set(qn("w:type"), "page")
+    run_br._r.append(br)
+
+    # ── 본문 파싱 ──────────────────────────────────────────────
     lines = md_content.splitlines()
-    i = 0
-    while i < len(lines):
-        line = lines[i]
+    in_frontmatter = False
+    frontmatter_count = 0
 
-        # YAML front-matter 건너뜀
+    for line in lines:
+        # YAML front-matter 스킵
         if line.strip() == "---":
-            i += 1
+            frontmatter_count += 1
+            in_frontmatter = frontmatter_count < 2
+            continue
+        if in_frontmatter:
             continue
 
-        # H1 제목 (# )
+        # H1 (# ) — 문서 타이틀 줄, 표지와 중복되므로 얇게 처리
         if line.startswith("# "):
-            p   = doc.add_paragraph()
-            run = p.add_run(_strip_md_bold(line[2:].strip()))
-            _set_font(run, 15, bold=True)
+            p = _para(doc)
+            _run(p, _strip_md_bold(line[2:].strip()), size_pt=14, bold=True, color=C_NAVY)
+            _heading_border(p)
 
-        # H2 섹션 제목 (## )
+        # H2 (## ) — 섹션 제목
         elif line.startswith("## "):
-            doc.add_paragraph()          # 섹션 앞 여백
-            p   = doc.add_paragraph()
-            run = p.add_run(_strip_md_bold(line[3:].strip()))
-            _set_font(run, 13, bold=True)
+            doc.add_paragraph()
+            p = _para(doc)
+            _run(p, _strip_md_bold(line[3:].strip()), size_pt=13, bold=True, color=C_BLUE)
+            _heading_border(p, "2E75B6")
 
-        # Bullet (• 또는 - )
-        elif line.startswith("•") or (line.startswith("- ") and not line.startswith("---")):
-            text = line.lstrip("•- ").strip()
-            p    = doc.add_paragraph(style="List Bullet")
-            # **bold** 구간 분리
-            parts = re.split(r"(\*\*.+?\*\*)", text)
-            for part in parts:
-                if part.startswith("**") and part.endswith("**"):
-                    run = p.add_run(part[2:-2])
-                    _set_font(run, 11, bold=True)
-                else:
-                    run = p.add_run(part)
-                    _set_font(run, 11)
+        # H3 (### )
+        elif line.startswith("### "):
+            p = _para(doc)
+            _run(p, _strip_md_bold(line[4:].strip()), size_pt=12, bold=True, color=RGBColor(0x1F, 0x4D, 0x78))
 
-        # **Bold** 로 시작하는 들여쓰기 줄 (sub-bullet)
-        elif line.startswith("  - ") or line.startswith("  •"):
-            text = line.lstrip(" •-").strip()
-            p    = doc.add_paragraph(style="List Bullet 2")
-            run  = p.add_run(_strip_md_bold(text))
-            _set_font(run, 10)
+        # Bullet (•, -, *)
+        elif line.startswith("•") or (line.startswith("- ") and line.strip() != "---") \
+                or line.startswith("* "):
+            text = re.sub(r"^[•\-\*]\s*", "", line).strip()
+            p = doc.add_paragraph(style="List Bullet")
+            p.paragraph_format.left_indent = Pt(18)
+            _add_bold_runs(p, text, size_pt=10)
 
-        # 일반 텍스트 (비어있지 않은 줄)
-        elif line.strip() and not line.startswith("---"):
-            p    = doc.add_paragraph()
-            parts = re.split(r"(\*\*.+?\*\*)", line.strip())
-            for part in parts:
-                if part.startswith("**") and part.endswith("**"):
-                    run = p.add_run(part[2:-2])
-                    _set_font(run, 11, bold=True)
-                else:
-                    run = p.add_run(part)
-                    _set_font(run, 11)
+        # 들여쓰기 sub-bullet
+        elif line.startswith("  - ") or line.startswith("  • "):
+            text = re.sub(r"^\s+[•\-]\s*", "", line).strip()
+            p = doc.add_paragraph(style="List Bullet 2")
+            _add_bold_runs(p, text, size_pt=10)
 
-        i += 1
+        # **로만 구성된 줄 (강조 단락)
+        elif line.strip().startswith("**") and line.strip().endswith("**") and line.strip() != "**":
+            p = _para(doc)
+            _run(p, line.strip()[2:-2], size_pt=10, bold=True)
 
-    # 저장
+        # 수평선 (---)
+        elif line.strip() == "---":
+            _heading_border(_para(doc))
+
+        # 일반 텍스트
+        elif line.strip():
+            p = _para(doc)
+            _add_bold_runs(p, line.strip(), size_pt=10)
+
+    # ── 저장 ──────────────────────────────────────────────────
     os.makedirs(REPORTS_DIR, exist_ok=True)
     today    = datetime.now().strftime("%Y%m%d")
     filepath = os.path.join(REPORTS_DIR, f"{today}_{period}.docx")
