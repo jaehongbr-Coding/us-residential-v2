@@ -200,7 +200,7 @@ def save_report_docx(md_content: str, period: str) -> str:
     """마크다운 리포트를 우미글로벌 양식 .docx 로 저장한다."""
     try:
         from docx import Document
-        from docx.shared import Pt, RGBColor, Cm
+        from docx.shared import Pt, Inches, RGBColor
         from docx.enum.text import WD_ALIGN_PARAGRAPH
         from docx.oxml.ns import qn
         from docx.oxml import OxmlElement
@@ -266,12 +266,10 @@ def save_report_docx(md_content: str, period: str) -> str:
     # ── 페이지 설정 (A4, 1인치 여백) ──────────────────────────
     doc = Document()
     section = doc.sections[0]
-    section.page_width   = 11906   # DXA
-    section.page_height  = 16838
-    for attr in ("left_margin", "right_margin", "top_margin", "bottom_margin"):
-        setattr(section, attr, 1440)  # 1인치
-    section.header_distance = 708
-    section.footer_distance = 708
+    section.top_margin    = Inches(1)
+    section.bottom_margin = Inches(1)
+    section.left_margin   = Inches(1)
+    section.right_margin  = Inches(1)
 
     # ── 헤더 ──────────────────────────────────────────────────
     header = section.header
@@ -368,7 +366,7 @@ def save_report_docx(md_content: str, period: str) -> str:
                 or line.startswith("* "):
             text = re.sub(r"^[•\-\*]\s*", "", line).strip()
             p = doc.add_paragraph(style="List Bullet")
-            p.paragraph_format.left_indent = Pt(18)
+            p.paragraph_format.left_indent = Inches(0.25)
             _add_bold_runs(p, text, size_pt=10)
 
         # 들여쓰기 sub-bullet
