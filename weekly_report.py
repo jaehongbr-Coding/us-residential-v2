@@ -29,8 +29,8 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 ARTICLES_CSV = "articles.csv"
 REPORTS_DIR  = "reports"
-MODEL        = "claude-sonnet-4-20250514"
-MAX_TOKENS   = 2000
+MODEL        = "claude-sonnet-4-5"
+MAX_TOKENS   = 4000
 
 PERIOD_DAYS = {
     "weekly":       7,
@@ -129,7 +129,12 @@ def generate_report(articles: list[dict], period: str) -> str:
     date_to   = datetime.now().strftime("%Y-%m-%d")
     date_from = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
-    articles_text = format_articles(articles)
+    # woomi_relevance 높음 우선, 최대 100건으로 제한
+    sorted_articles = sorted(
+        articles,
+        key=lambda a: (0 if a.get("woomi_relevance") == "높음" else 1 if a.get("woomi_relevance") == "보통" else 2)
+    )[:100]
+    articles_text = format_articles(sorted_articles)
     user_prompt = REPORT_TEMPLATE.format(
         period_label=PERIOD_LABEL[period],
         count=len(articles),
