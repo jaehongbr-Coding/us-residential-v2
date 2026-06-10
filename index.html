@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>US Residential Intelligence v2</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -199,6 +200,15 @@
       .col-sector, .col-tags { display: none; }
       .col-rationale { width: 140px; }
     }
+
+    /* ── Report section ── */
+    #reportContent h2 { font-size: 16px; font-weight: 700; margin: 18px 0 6px; color: #222; }
+    #reportContent h3 { font-size: 14px; font-weight: 600; margin: 14px 0 4px; color: #333; }
+    #reportContent ul  { padding-left: 18px; margin: 4px 0 10px; }
+    #reportContent li  { margin-bottom: 4px; line-height: 1.6; }
+    #reportContent p   { margin: 6px 0; }
+    #reportContent hr  { border: none; border-top: 1px solid #ddd; margin: 14px 0; }
+    #reportContent pre { background: #f5f5f5; padding: 10px; border-radius: 4px; font-size: 12px; overflow-x: auto; }
   </style>
 </head>
 <body>
@@ -291,6 +301,24 @@
       <div class="section">
         <div class="section-title" id="allTitle">전체 기사</div>
         <div class="scroll-box"><div class="scroll-inner h-600 tbl-wrap" id="allTable"></div></div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid #eee;margin-bottom:24px" />
+
+      <!-- 📋 인텔리전스 리포트 -->
+      <div class="section">
+        <div class="section-title">📋 인텔리전스 리포트</div>
+        <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <select id="reportSelect" style="padding:6px 10px;font-size:13px;border:1px solid #ccc;border-radius:4px;min-width:240px">
+            <option value="">-- 리포트 선택 --</option>
+          </select>
+          <span id="reportStatus" style="font-size:12px;color:#999"></span>
+        </div>
+        <div id="reportContent"
+          style="border:1px solid #e0e0e0;border-radius:8px;padding:20px 24px;min-height:80px;
+                 font-size:14px;line-height:1.7;color:#333;background:#fafafa">
+          <p style="color:#aaa;font-size:13px">아직 생성된 리포트가 없습니다.</p>
+        </div>
       </div>
 
     </div><!-- #app -->
@@ -539,6 +567,55 @@ Papa.parse(CSV_URL, {
       `<span style="color:#c00">데이터 로드 실패: ${err.message}</span>`;
   },
 });
+
+/* ── Report loader ── */
+const REPO_RAW   = "https://raw.githubusercontent.com/jaehongbr-Coding/us-residential-v2/main";
+const REPO_API   = "https://api.github.com/repos/jaehongbr-Coding/us-residential-v2/contents/reports";
+const PERIOD_KO  = { weekly: "주간", monthly: "월간", quarterly: "분기", "semi-annual": "반기" };
+
+async function loadReportList() {
+  const sel    = document.getElementById("reportSelect");
+  const status = document.getElementById("reportStatus");
+  try {
+    const res  = await fetch(REPO_API);
+    if (!res.ok) throw new Error("목록 조회 실패");
+    const files = await res.json();
+    const mds   = files.filter(f => f.name.endsWith(".md")).sort((a, b) => b.name.localeCompare(a.name));
+    if (!mds.length) { status.textContent = "리포트 없음"; return; }
+    mds.forEach(f => {
+      const opt = document.createElement("option");
+      opt.value = f.name;
+      // 파일명 예: 20260610_weekly.md → 2026-06-10 주간
+      const m = f.name.match(/^(\d{4})(\d{2})(\d{2})_(.+)\.md$/);
+      opt.textContent = m
+        ? `${m[1]}-${m[2]}-${m[3]} ${PERIOD_KO[m[4]] || m[4]}`
+        : f.name;
+      sel.appendChild(opt);
+    });
+    status.textContent = `${mds.length}개 리포트`;
+  } catch (e) {
+    status.textContent = "목록 로드 실패";
+  }
+}
+
+async function loadSelectedReport() {
+  const sel     = document.getElementById("reportSelect");
+  const content = document.getElementById("reportContent");
+  const fname   = sel.value;
+  if (!fname) { content.innerHTML = '<p style="color:#aaa;font-size:13px">리포트를 선택하세요.</p>'; return; }
+  content.innerHTML = '<p style="color:#aaa;font-size:13px">불러오는 중...</p>';
+  try {
+    const res = await fetch(`${REPO_RAW}/reports/${fname}`);
+    if (!res.ok) throw new Error("파일 로드 실패");
+    const text = await res.text();
+    content.innerHTML = marked.parse(text);
+  } catch (e) {
+    content.innerHTML = `<p style="color:#c00">로드 실패: ${e.message}</p>`;
+  }
+}
+
+document.getElementById("reportSelect").addEventListener("change", loadSelectedReport);
+loadReportList();
 </script>
 </body>
 </html>

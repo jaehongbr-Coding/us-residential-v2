@@ -39,9 +39,23 @@ woomi_relevance: CSV 저장만, UI 미노출
 - LinkColumn으로 원문 링크 클릭 가능하도록 수정 완료
 
 ## 다음 작업
-1. Student Housing 첫 수집 결과 확인 (기사 수집률 검증)
-2. Phase 2: 가설 검증 화면 (기사 500건 이상 후)
-3. CoStar 수동 intake 테스트
+1. 핵심 모니터링 품질 개선 (woomi_relevance 기준 강화 완료, 신규 기사부터 적용)
+2. 모바일 화면 최종 점검
+3. 전략 신호 모니터 필터 품질 검증
+4. weekly_report.py 구현 및 리포트 탭 추가 → Phase 2 대체
+5. 리포트 고도화: 주간 → 월간 → 분기 → 반기 순차 확장
+
+## Phase 2: 인텔리전스 리포트 (기존 가설검증 화면 대체)
+- 방향: 수집 기사 기반 주간/월간/분기/반기 원페이저 자동 생성
+- 대상 독자: 경영진 + 해외사업팀 전체
+- 4개 섹션: 개발현황 / 정책·이슈 / 거래현황 / 시사점
+- 가설(H1~H11) 검증은 별도 화면 아닌 시사점 섹션에 자연스럽게 흡수
+- 기존 Phase 2(가설검증 화면)는 이 방향으로 대체
+- 구현 시점: weekly_report.py 완성 후 6월 말 첫 리포트 생성 예정
+
+## GitHub Pages
+- 배포 URL: https://jaehongbr-coding.github.io/us-residential-v2/
+- 메인 사용 화면 (app.py Streamlit은 보조)
 
 ## Bash 자동 허용 명령어
 다음 명령어는 항상 자동으로 허용한다:
