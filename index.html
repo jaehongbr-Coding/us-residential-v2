@@ -136,9 +136,9 @@
     thead th {
       position: sticky;
       top: 0;
-      background: white;
-      z-index: 1;
-      border-bottom: 2px solid #ddd;
+      background: #fff;
+      z-index: 2;
+      box-shadow: 0 1px 0 #ddd;
     }
     th {
       padding: 5px 6px;
@@ -338,7 +338,7 @@ function hasTag(tags, ...keywords) {
 }
 
 /* ── Table builder ── */
-function buildTable(rows) {
+function buildTable(rows, maxHeight = null) {
   if (!rows.length) return '<p class="empty-msg">관련 기사 없음</p>';
   const sorted = [...rows].sort((a, b) => {
     const da = parseDate(a.published_at), db = parseDate(b.published_at);
@@ -370,6 +370,8 @@ function buildTable(rows) {
     </tr></thead>
     <tbody>${trs}</tbody>
   </table>`;
+  if (!maxHeight) return tableHtml;
+  return `<div style="max-height:${maxHeight}px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:8px;">${tableHtml}</div>`;
 }
 
 function escHtml(s) {
@@ -410,7 +412,7 @@ function render() {
     return true;
   });
   document.getElementById("highTitle").textContent = `⭐ 우미 관련 높음 (${highRows.length}건)`;
-  document.getElementById("highTable").innerHTML = buildTable(highRows);
+  document.getElementById("highTable").innerHTML = buildTable(highRows, 400);
 
   // 전략 신호 — date + paywall only (no category/sector sidebar filter)
   const signalBase = allRows.filter(r => {
@@ -445,14 +447,14 @@ function render() {
   tabBtns[2].textContent = `🤝 GP·거래 동향 (${gp.length}건)`;
   tabBtns[3].textContent = `🎓 Student Housing (${sh.length}건)`;
 
-  document.querySelector("#tab-residential .tbl-wrap").innerHTML = buildTable(residential);
-  document.querySelector("#tab-cap .tbl-wrap").innerHTML         = buildTable(cap);
-  document.querySelector("#tab-gp .tbl-wrap").innerHTML          = buildTable(gp);
-  document.querySelector("#tab-sh .tbl-wrap").innerHTML          = buildTable(sh);
+  document.querySelector("#tab-residential .tbl-wrap").innerHTML = buildTable(residential, 500);
+  document.querySelector("#tab-cap .tbl-wrap").innerHTML         = buildTable(cap, 500);
+  document.querySelector("#tab-gp .tbl-wrap").innerHTML          = buildTable(gp, 500);
+  document.querySelector("#tab-sh .tbl-wrap").innerHTML          = buildTable(sh, 500);
 
   // 전체 기사
   document.getElementById("allTitle").textContent = `전체 기사 (${base.length}건)`;
-  document.getElementById("allTable").innerHTML = buildTable(base);
+  document.getElementById("allTable").innerHTML = buildTable(base, 600);
 }
 
 /* ── Populate filter dropdowns ── */
