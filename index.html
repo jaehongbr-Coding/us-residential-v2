@@ -111,6 +111,20 @@
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
 
+    /* ── Scroll box ── */
+    .scroll-box {
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .scroll-inner {
+      overflow-y: auto;
+      overflow-x: auto;
+    }
+    .scroll-inner.h-400 { max-height: 400px; }
+    .scroll-inner.h-500 { max-height: 500px; }
+    .scroll-inner.h-600 { max-height: 600px; }
+
     /* ── Table ── */
     .tbl-wrap { overflow-x: auto; }
     table {
@@ -119,6 +133,13 @@
       table-layout: fixed;
     }
     thead tr { border-bottom: 1px solid #ddd; }
+    thead th {
+      position: sticky;
+      top: 0;
+      background: white;
+      z-index: 1;
+      border-bottom: 2px solid #ddd;
+    }
     th {
       padding: 5px 6px;
       font-size: 11px;
@@ -238,7 +259,7 @@
       <!-- ⭐ 우미 관련 높음 -->
       <div class="section">
         <div class="section-title" id="highTitle">⭐ 우미 관련 높음</div>
-        <div class="tbl-wrap" id="highTable"></div>
+        <div class="scroll-box"><div class="scroll-inner h-400 tbl-wrap" id="highTable"></div></div>
       </div>
 
       <hr style="border:none;border-top:1px solid #eee;margin-bottom:24px" />
@@ -252,15 +273,15 @@
           <button class="tab-btn" data-tab="tab-gp" onclick="switchTab(this)">🤝 GP·거래 동향</button>
           <button class="tab-btn" data-tab="tab-sh" onclick="switchTab(this)">🎓 Student Housing</button>
         </div>
-        <div class="tab-panel active" id="tab-residential"><div class="tbl-wrap"></div></div>
-        <div class="tab-panel" id="tab-cap"><div class="tbl-wrap"></div></div>
-        <div class="tab-panel" id="tab-gp"><div class="tbl-wrap"></div></div>
+        <div class="tab-panel active" id="tab-residential"><div class="scroll-box"><div class="scroll-inner h-500 tbl-wrap"></div></div></div>
+        <div class="tab-panel" id="tab-cap"><div class="scroll-box"><div class="scroll-inner h-500 tbl-wrap"></div></div></div>
+        <div class="tab-panel" id="tab-gp"><div class="scroll-box"><div class="scroll-inner h-500 tbl-wrap"></div></div></div>
         <div class="tab-panel" id="tab-sh">
           <div class="sh-toggle">
             <input type="checkbox" id="shLow" onchange="render()" />
             <label for="shLow">낮음 기사 포함</label>
           </div>
-          <div class="tbl-wrap"></div>
+          <div class="scroll-box"><div class="scroll-inner h-500 tbl-wrap"></div></div>
         </div>
       </div>
 
@@ -269,7 +290,7 @@
       <!-- 전체 기사 -->
       <div class="section">
         <div class="section-title" id="allTitle">전체 기사</div>
-        <div class="tbl-wrap" id="allTable"></div>
+        <div class="scroll-box"><div class="scroll-inner h-600 tbl-wrap" id="allTable"></div></div>
       </div>
 
     </div><!-- #app -->
