@@ -385,7 +385,7 @@ function escHtml(s) {
 /* ── Filter logic ── */
 function applyBaseFilters(rows, { cats, sectors, from, to, hideP }) {
   return rows.filter(r => {
-    if (hideP && r.access_limited === "True") return false;
+    if (hideP && String(r.access_limited).toLowerCase() === "true") return false;
     if (cats.length && !cats.includes(r.category)) return false;
     if (sectors.length && !sectors.includes(r.sector)) return false;
     const d = parseDate(r.published_at);
