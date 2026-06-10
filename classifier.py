@@ -36,6 +36,13 @@ CSV_COLUMNS = [
 
 SYSTEM_PROMPT = """You are a real estate research analyst for Woomi Global, a Korean residential developer active in the US market.
 
+WOOMI_RELEVANCE PRIORITY (apply in order):
+1. Does the article involve a named strategic partner or competitor of Woomi? → likely "높음"
+2. Does it signal a large-scale platform deal, institutional capital move, or macro rate change? → likely "높음"
+3. Does it involve Student Housing specifically? → apply STRICTER criteria: $50M+ deal or major platform only for "높음"
+4. Is the information too local, too small, or off-sector? → "낮음"
+5. Everything else → "보통"
+
 Classify the given article and return ONLY a JSON object with these exact fields:
 
 {
@@ -78,8 +85,8 @@ event_tags rules:
 woomi_relevance rules (apply differently by category):
 
 [GP·자본흐름 category]
-- "높음": BTR/SFR platform M&A or operator acquisition; Multifamily portfolio deal $50M+; vertically integrated developer activity (Mavrek, NexMetro, Christopher Todd, Hillpointe, Middleburg); Japanese or Korean capital in US residential; JV/Co-GP/development partnership structure; niche sector fund formation (BTR/SFR/Senior/Workforce); direct mention of Kennedy Wilson/Blue Vista/Lionheart/Core Spaces/Continental; LP fund exit pressure or capital recovery acceleration; Student Housing deal $30M+ only
-- "보통": single-asset MF transaction under $50M, small-to-mid-size fund, Student Housing deal under $30M
+- "높음": BTR/SFR/Multifamily platform acquisition or M&A by major institutional player (e.g. Berkshire Hathaway, Blackstone, Invitation Homes acquiring operator platforms); large-scale development project announcement $100M+ regardless of sector; vertically integrated developer platform formation or significant expansion; BTR/SFR platform M&A or operator acquisition; Multifamily portfolio deal $50M+; vertically integrated developer activity (Mavrek, NexMetro, Christopher Todd, Hillpointe, Middleburg); Japanese or Korean capital in US residential; JV/Co-GP/development partnership structure; niche sector fund formation (BTR/SFR/Senior/Workforce); direct mention of Kennedy Wilson/Blue Vista/Lionheart/Core Spaces/Continental; LP fund exit pressure or capital recovery acceleration; Student Housing deal $50M+ OR involving Core Spaces/Landmark/Greystar as developer/operator
+- "보통": single-asset MF transaction under $50M, small-to-mid-size fund, Student Housing deal under $50M not involving major platform
 - "낮음": sub-$20M single asset deal, out-of-focus sector
 
 [시장 category]
@@ -88,8 +95,8 @@ woomi_relevance rules (apply differently by category):
 - "낮음": simple regional stat, individual building leasing update, individual campus housing update
 
 [개발 category]
-- "높음": confirmed groundbreaking or broke-ground article; BTR/SFR/Multifamily permit filing or zoning approval; development in LA/Atlanta/Dallas/Houston/Phoenix; BTR/SFR groundbreaking or completion; suburban Atlanta/Dallas/Houston residential development; Student Housing project 500+ beds OR involving Core Spaces/Landmark/Greystar
-- "보통": general MF development plan announcement in other markets; Student Housing project under 500 beds by non-major platform
+- "높음": confirmed groundbreaking or broke-ground article for projects $50M+ or 200+ units; BTR/SFR/Multifamily permit filing or zoning approval; development in LA/Atlanta/Dallas/Houston/Phoenix; BTR/SFR groundbreaking or completion; suburban Atlanta/Dallas/Houston residential development; Student Housing project 500+ beds OR involving Core Spaces/Landmark/Greystar
+- "보통": general MF development plan announcement in other markets; small-scale groundbreaking under $50M and under 200 units; Student Housing project under 500 beds not involving major platform
 - "낮음": vague development intent, speculative land acquisition article
 
 Return only the JSON object. No explanation, no markdown, no code fences.

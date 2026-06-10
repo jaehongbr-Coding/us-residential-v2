@@ -256,9 +256,9 @@
     <div id="spinner"><div class="spin"></div> 데이터 로딩 중...</div>
     <div id="app" style="display:none">
 
-      <!-- ⭐ 우미 관련 높음 -->
+      <!-- 🎯 핵심 모니터링 -->
       <div class="section">
-        <div class="section-title" id="highTitle">⭐ 우미 관련 높음</div>
+        <div class="section-title" id="highTitle">🎯 핵심 모니터링</div>
         <div class="scroll-box"><div class="scroll-inner h-400 tbl-wrap" id="highTable"></div></div>
       </div>
 
@@ -269,7 +269,7 @@
         <div class="section-title">📡 전략 신호 모니터</div>
         <div class="tabs" id="signalTabs">
           <button class="tab-btn active" data-tab="tab-residential" onclick="switchTab(this)">🏗️ 개발 동향</button>
-          <button class="tab-btn" data-tab="tab-cap" onclick="switchTab(this)">💰 자본시장·금리</button>
+          <button class="tab-btn" data-tab="tab-cap" onclick="switchTab(this)">📊 시장·금리</button>
           <button class="tab-btn" data-tab="tab-gp" onclick="switchTab(this)">🤝 GP·거래 동향</button>
           <button class="tab-btn" data-tab="tab-sh" onclick="switchTab(this)">🎓 Student Housing</button>
         </div>
@@ -411,7 +411,7 @@ function render() {
     if (f.to   && d && d > new Date(f.to + "T23:59:59")) return false;
     return true;
   });
-  document.getElementById("highTitle").textContent = `⭐ 우미 관련 높음 (${highRows.length}건)`;
+  document.getElementById("highTitle").textContent = `🎯 핵심 모니터링 (${highRows.length}건)`;
   document.getElementById("highTable").innerHTML = buildTable(highRows, 400);
 
   // 전략 신호 — 고정 3일 기준, paywall only (사이드바 날짜 필터 미적용)
@@ -429,13 +429,14 @@ function render() {
     hasTag(r.event_tags, "construction_start", "permit", "land_acquisition", "delivery")
   );
   const cap = signalBase.filter(r =>
-    hasTag(r.event_tags, "financing") || r.source === "Federal Reserve"
+    r.category === "시장" && (
+      hasTag(r.event_tags, "financing", "policy", "market_data", "rent_occupancy") ||
+      r.source === "Federal Reserve"
+    )
   );
   const gp = signalBase.filter(r =>
     r.category === "GP·자본흐름" &&
-    hasTag(r.event_tags, "transaction", "acquisition", "jv") ||
-    RESIDENTIAL_SECTORS.includes(r.sector) ||
-    hasTag(r.event_tags, "rent_occupancy")
+    hasTag(r.event_tags, "transaction", "acquisition", "jv")
   );
   const showLow = document.getElementById("shLow").checked;
   const sh = signalBase.filter(r =>
@@ -445,7 +446,7 @@ function render() {
   // Update tab labels (건수 = buildTable에 전달되는 실제 rows.length)
   const tabBtns = document.querySelectorAll("#signalTabs .tab-btn");
   tabBtns[0].textContent = `🏗️ 개발 동향 (${residential.length}건)`;
-  tabBtns[1].textContent = `💰 자본시장·금리 (${cap.length}건)`;
+  tabBtns[1].textContent = `📊 시장·금리 (${cap.length}건)`;
   tabBtns[2].textContent = `🤝 GP·거래 동향 (${gp.length}건)`;
   tabBtns[3].textContent = `🎓 Student Housing (${sh.length}건)`;
 
