@@ -414,12 +414,12 @@ function render() {
   document.getElementById("highTitle").textContent = `⭐ 우미 관련 높음 (${highRows.length}건)`;
   document.getElementById("highTable").innerHTML = buildTable(highRows, 400);
 
-  // 전략 신호 — date + paywall only (no category/sector sidebar filter)
+  // 전략 신호 — 고정 3일 기준, paywall only (사이드바 날짜 필터 미적용)
+  const signal3dAgo = new Date(); signal3dAgo.setDate(signal3dAgo.getDate() - 3); signal3dAgo.setHours(0,0,0,0);
   const signalBase = allRows.filter(r => {
     if (f.hideP && r.access_limited === "True") return false;
     const d = parseDate(r.published_at);
-    if (f.from && d && d < new Date(f.from)) return false;
-    if (f.to   && d && d > new Date(f.to + "T23:59:59")) return false;
+    if (!d || d < signal3dAgo) return false;
     return true;
   });
 
@@ -440,7 +440,7 @@ function render() {
     r.sector === "Student Housing" && (showLow || r.woomi_relevance !== "낮음")
   );
 
-  // Update tab labels
+  // Update tab labels (건수 = buildTable에 전달되는 실제 rows.length)
   const tabBtns = document.querySelectorAll("#signalTabs .tab-btn");
   tabBtns[0].textContent = `🏗️ 주거시장 공급·수요 (${residential.length}건)`;
   tabBtns[1].textContent = `💰 자본시장·금리 (${cap.length}건)`;
@@ -452,7 +452,7 @@ function render() {
   document.querySelector("#tab-gp .tbl-wrap").innerHTML          = buildTable(gp, 500);
   document.querySelector("#tab-sh .tbl-wrap").innerHTML          = buildTable(sh, 500);
 
-  // 전체 기사
+  // 전체 기사 (건수 = base.length = 사이드바 필터 적용 후 실제 rows)
   document.getElementById("allTitle").textContent = `전체 기사 (${base.length}건)`;
   document.getElementById("allTable").innerHTML = buildTable(base, 600);
 }
