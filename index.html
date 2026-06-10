@@ -156,11 +156,11 @@
     }
     tr:hover td { background: #fafafa; }
 
-    .col-date      { width: 60px; white-space: nowrap; color: #888; font-size: 11px; }
-    .col-title     { /* flex */ }
+    .col-date      { width: 48px; white-space: nowrap; color: #888; font-size: 11px; }
+    .col-title     { width: 35%; }
     .col-sector    { width: 80px; color: #555; font-size: 11px; }
-    .col-tags      { width: 120px; color: #666; font-size: 11px; word-break: break-word; }
-    .col-rationale { width: 200px; color: #666; font-size: 11px; word-break: break-word; }
+    .col-tags      { width: 110px; color: #666; font-size: 11px; word-break: break-word; }
+    .col-rationale { color: #666; font-size: 11px; word-break: break-word; }
 
     .title-link {
       color: #1a73e8;
@@ -357,7 +357,7 @@ function buildTable(rows, maxHeight = null) {
       </td>
       <td class="col-sector">${escHtml(r.sector)}</td>
       <td class="col-tags">${escHtml(r.event_tags)}</td>
-      <td class="col-rationale">${escHtml(truncate(r.claude_rationale, 80))}</td>
+      <td class="col-rationale">${escHtml(truncate(r.claude_rationale, 120))}</td>
     </tr>`;
   }).join("");
   return `<table>
