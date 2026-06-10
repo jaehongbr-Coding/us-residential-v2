@@ -277,7 +277,7 @@ def fetch_student_housing_feed(university: dict) -> list[dict]:
     except Exception as e:
         print(f"    [SKIP] {name} — feedparser 오류: {e}")
         return []
-    cutoff = datetime.now() - timedelta(days=30)
+    cutoff = datetime.now() - timedelta(days=90)  # 90일 이내 기사만 수집
     articles = []
     for entry in feed.entries[:5]:
         title = _clean_html(entry.get("title", "")).strip()
@@ -336,7 +336,7 @@ def fetch_feed(source: str, url: str, sector: str) -> list[dict]:
         print(f"  [SKIP] {source} — feedparser 오류: {e}")
         return []
 
-    cutoff = datetime.now() - timedelta(days=30)
+    cutoff = datetime.now() - timedelta(days=90)  # 90일 이내 기사만 수집
     articles = []
     for entry in feed.entries:
         title = _clean_html(entry.get("title", "")).strip()

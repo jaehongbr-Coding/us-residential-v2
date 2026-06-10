@@ -121,6 +121,68 @@ def format_articles(articles: list[dict]) -> str:
 
 
 # ------------------------------------------------------------------
+# weekly .md 파일 로드 (분기/반기 재요약용)
+# ------------------------------------------------------------------
+
+def load_weekly_reports(days: int) -> list[tuple[str, str]]:
+    """reports/ 폴더에서 기간 내 weekly .md 파일을 (파일명, 내용) 리스트로 반환."""
+    if not os.path.isdir(REPORTS_DIR):
+        return []
+    cutoff = datetime.now() - timedelta(days=days)
+    result = []
+    for fname in sorted(os.listdir(REPORTS_DIR)):
+        if not (fname.endswith("_weekly.md") or fname.endswith("-weekly.md")):
+            continue
+        # 파일명에서 날짜 추출 (YYYYMMDD_weekly.md)
+        m = re.match(r"^(\d{8})_weekly\.md$", fname)
+        if not m:
+            continue
+        try:
+            fdate = datetime.strptime(m.group(1), "%Y%m%d")
+        except ValueError:
+            continue
+        if fdate >= cutoff:
+            fpath = os.path.join(REPORTS_DIR, fname)
+            with open(fpath, encoding="utf-8") as f:
+                result.append((fname, f.read()))
+    return result
+
+
+def generate_report_from_weeklies(weekly_reports: list[tuple[str, str]], period: str) -> str:
+    """weekly .md 파일들을 종합해 분기/반기 리포트를 생성한다."""
+    period_label = PERIOD_LABEL[period]
+    weeks_count  = len(weekly_reports)
+
+    combined = ""
+    for fname, content in weekly_reports:
+        combined += f"\n\n{'='*60}\n📄 {fname}\n{'='*60}\n{content}"
+
+    user_prompt = (
+        f"다음은 최근 {weeks_count}주간의 주간 리포트입니다.\n"
+        f"이를 종합해 {period_label} 인텔리전스 리포트를 작성해주세요.\n\n"
+        f"요청 사항:\n"
+        f"- 4개 섹션(개발 현황 / 정책·이슈 / 거래현황 / 시사점)으로 구성\n"
+        f"- 각 섹션은 3~7개 bullet point, 수치·지역·규모 정보 포함\n"
+        f"- 반복 언급된 트렌드는 강조, 일회성 사건은 축약\n"
+        f"- 시사점은 우미글로벌 해외사업팀 관점, BTR/Student Housing/GP 기회 중심\n\n"
+        f"{combined}"
+    )
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY 환경변수가 설정되지 않았습니다.")
+
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=MAX_TOKENS,
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_prompt}],
+    )
+    return response.content[0].text.strip()
+
+
+# ------------------------------------------------------------------
 # 리포트 생성
 # ------------------------------------------------------------------
 
@@ -424,24 +486,46 @@ def main():
     print(f"=== US Residential Intelligence — {PERIOD_LABEL[period]} 리포트 생성 ===")
     print(f"기간: 최근 {days}일\n")
 
-    articles = load_articles()
-    if not articles:
-        print("articles.csv가 없거나 비어 있습니다. collector.py를 먼저 실행하세요.")
-        return
+    # ── 분기/반기: weekly .md 재요약, fallback → articles.csv 직접 분석 ──
+    use_weekly_summary = period in ("quarterly", "semi-annual")
+    report_content = None
 
-    filtered = filter_by_period(articles, days)
-    if not filtered:
-        print(f"최근 {days}일 내 기사가 없습니다. 리포트를 생성하지 않습니다.")
-        return
+    if use_weekly_summary:
+        weekly_reports = load_weekly_reports(days)
+        if len(weekly_reports) < 3:
+            print(
+                f"[WARN] reports/ 내 weekly .md 파일이 {len(weekly_reports)}개로 부족합니다 "
+                f"(최소 3개 필요). articles.csv 직접 분석으로 fallback합니다."
+            )
+            use_weekly_summary = False
+        else:
+            print(f"주간 리포트 {len(weekly_reports)}개를 종합해 {PERIOD_LABEL[period]} 리포트를 생성합니다.")
+            print("Claude API 호출 중...\n")
+            try:
+                report_content = generate_report_from_weeklies(weekly_reports, period)
+            except RuntimeError as e:
+                print(f"오류: {e}")
+                return
 
-    print(f"대상 기사: {len(filtered)}건")
-    print("Claude API 호출 중...\n")
+    if not use_weekly_summary:
+        articles = load_articles()
+        if not articles:
+            print("articles.csv가 없거나 비어 있습니다. collector.py를 먼저 실행하세요.")
+            return
 
-    try:
-        report_content = generate_report(filtered, period)
-    except RuntimeError as e:
-        print(f"오류: {e}")
-        return
+        filtered = filter_by_period(articles, days)
+        if not filtered:
+            print(f"최근 {days}일 내 기사가 없습니다. 리포트를 생성하지 않습니다.")
+            return
+
+        print(f"대상 기사: {len(filtered)}건")
+        print("Claude API 호출 중...\n")
+
+        try:
+            report_content = generate_report(filtered, period)
+        except RuntimeError as e:
+            print(f"오류: {e}")
+            return
 
     filepath = save_report(report_content, period)
     print(f"리포트 저장 완료: {filepath}")
