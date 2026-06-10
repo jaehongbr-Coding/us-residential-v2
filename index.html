@@ -477,7 +477,7 @@ function populateSelects(rows) {
 /* ── Default date range (7 days) ── */
 function setDefaultDates() {
   const today   = new Date();
-  const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7);
+  const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 3);
   const fmt = d => d.toISOString().slice(0, 10);
   ["d_from", "m_from"].forEach(id => document.getElementById(id).value = fmt(weekAgo));
   ["d_to",   "m_to"  ].forEach(id => document.getElementById(id).value = fmt(today));
