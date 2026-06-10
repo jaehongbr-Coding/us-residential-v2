@@ -312,6 +312,11 @@
           <select id="reportSelect" style="padding:6px 10px;font-size:13px;border:1px solid #ccc;border-radius:4px;min-width:240px">
             <option value="">-- 리포트 선택 --</option>
           </select>
+          <a id="reportDocxBtn" href="#" download
+            style="display:none;padding:6px 12px;font-size:12px;background:#1a73e8;color:#fff;
+                   border-radius:4px;text-decoration:none;white-space:nowrap">
+            ⬇️ Word 다운로드
+          </a>
           <span id="reportStatus" style="font-size:12px;color:#999"></span>
         </div>
         <div id="reportContent"
@@ -601,7 +606,12 @@ async function loadReportList() {
 async function loadSelectedReport() {
   const sel     = document.getElementById("reportSelect");
   const content = document.getElementById("reportContent");
+  const docxBtn = document.getElementById("reportDocxBtn");
   const fname   = sel.value;
+
+  // 버튼 초기화
+  docxBtn.style.display = "none";
+
   if (!fname) { content.innerHTML = '<p style="color:#aaa;font-size:13px">리포트를 선택하세요.</p>'; return; }
   content.innerHTML = '<p style="color:#aaa;font-size:13px">불러오는 중...</p>';
   try {
@@ -609,6 +619,16 @@ async function loadSelectedReport() {
     if (!res.ok) throw new Error("파일 로드 실패");
     const text = await res.text();
     content.innerHTML = marked.parse(text);
+
+    // docx 버튼: .md → .docx 동일 파일명 존재 여부 확인 후 표시
+    const docxName = fname.replace(/\.md$/, ".docx");
+    const docxUrl  = `${REPO_RAW}/reports/${docxName}`;
+    const check    = await fetch(docxUrl, { method: "HEAD" });
+    if (check.ok) {
+      docxBtn.href         = docxUrl;
+      docxBtn.download     = docxName;
+      docxBtn.style.display = "inline-block";
+    }
   } catch (e) {
     content.innerHTML = `<p style="color:#c00">로드 실패: ${e.message}</p>`;
   }
