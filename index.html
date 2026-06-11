@@ -437,7 +437,7 @@ function render() {
 
   // ⭐ 우미 관련 높음 (always hide paywall regardless of toggle)
   const highRows = (() => {
-    // 1. 기본 필터
+    // 1. 기본 필터 + 날짜 내림차순 정렬
     const raw = allRows.filter(r => {
       if (r.access_limited === "True") return false;
       if (r.woomi_relevance !== "높음") return false;
@@ -451,12 +451,16 @@ function render() {
       return db - da;
     });
 
-    // 2. 중복 제거: URL 동일 OR (같은 날짜 + 공통 단어 3개 이상)
+    // 2. 중복 제거: URL 동일 OR (같은 날짜 + 공통 단어 2개 이상 OR 고유명사 2개 이상)
     function isDuplicate(a, b) {
       if ((a.published_at || "").slice(0, 10) !== (b.published_at || "").slice(0, 10)) return false;
       const wordsA = (a.title || "").toLowerCase().split(/\s+/).filter(w => w.length > 3);
       const wordsB = new Set((b.title || "").toLowerCase().split(/\s+/).filter(w => w.length > 3));
-      return wordsA.filter(w => wordsB.has(w)).length >= 3;
+      const overlap = wordsA.filter(w => wordsB.has(w)).length;
+      const properA = (a.title || "").split(/\s+/).filter(w => /^[A-Z]/.test(w) && w.length > 3);
+      const properB = new Set((b.title || "").split(/\s+/).filter(w => /^[A-Z]/.test(w) && w.length > 3));
+      const properOverlap = properA.filter(w => properB.has(w)).length;
+      return overlap >= 2 || properOverlap >= 2;
     }
     const seenUrls = new Set();
     const candidates = raw.reduce((acc, r) => {
@@ -468,9 +472,24 @@ function render() {
       return acc;
     }, []);
 
-    // 3. SH 캡 적용
-    const sh    = candidates.filter(r => r.sector === "Student Housing");
-    const nonSh = candidates.filter(r => r.sector !== "Student Housing");
+    // 3. 최신 날짜 기사 우선 — 5건 미만이면 최대 3일치까지 fallback
+    const dates = candidates.map(r => (r.published_at || "").slice(0, 10)).filter(Boolean);
+    const allDates = [...new Set(dates)].sort().reverse();
+    const latestDate = allDates[0];
+    let dateFiltered = candidates.filter(r => (r.published_at || "").slice(0, 10) === latestDate);
+    if (dateFiltered.length < 5) {
+      for (const d of allDates.slice(0, 3)) {
+        const idx = allDates.indexOf(d);
+        dateFiltered = candidates.filter(r =>
+          allDates.slice(0, idx + 1).includes((r.published_at || "").slice(0, 10))
+        );
+        if (dateFiltered.length >= 5) break;
+      }
+    }
+
+    // 4. SH 캡 적용
+    const sh    = dateFiltered.filter(r => r.sector === "Student Housing");
+    const nonSh = dateFiltered.filter(r => r.sector !== "Student Housing");
 
     return [...nonSh, ...sh.slice(0, 5)];
   })();
