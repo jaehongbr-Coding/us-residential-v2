@@ -300,6 +300,11 @@
       <!-- 전체 기사 -->
       <div class="section">
         <div class="section-title" id="allTitle">전체 기사</div>
+        <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:16px;">🔍</span>
+          <input type="text" id="searchInput" placeholder="기사 검색 (제목·요약·분류근거)"
+            style="flex:1;padding:7px 10px;font-size:13px;border:1px solid #ccc;border-radius:6px;" />
+        </div>
         <div class="scroll-box"><div class="scroll-inner h-600 tbl-wrap" id="allTable"></div></div>
       </div>
 
@@ -336,6 +341,19 @@ let allRows = [];
 
 /* ── Helpers ── */
 function isMobile() { return window.innerWidth <= 768; }
+
+function getLatestDateRange(rows) {
+  const dates = rows
+    .map(r => r.published_at ? r.published_at.slice(0, 10) : null)
+    .filter(Boolean)
+    .sort()
+    .reverse();
+  if (!dates.length) return { from: null, to: null };
+  const latest = dates[0];
+  const from = dates.find(d => (new Date(latest) - new Date(d)) / (1000 * 60 * 60 * 24) >= 2)
+    || dates[dates.length - 1];
+  return { from, to: latest };
+}
 
 function getFilters() {
   const p = isMobile() ? "m_" : "d_";
@@ -435,15 +453,16 @@ function render() {
   // Base filtered (with date + category + sector + paywall)
   const base = applyBaseFilters(allRows, f);
 
-  // ⭐ 우미 관련 높음 (always hide paywall regardless of toggle)
+  // ⭐ 우미 관련 높음 (사이드바 날짜 무관, 최신 2일치 자동 기준)
   const highRows = (() => {
+    const { from: hFrom, to: hTo } = getLatestDateRange(allRows);
     // 1. 기본 필터
     const candidates = allRows.filter(r => {
       if (r.access_limited === "True") return false;
       if (r.woomi_relevance !== "높음") return false;
-      const d = parseDate(r.published_at);
-      if (f.from && d && d < new Date(f.from)) return false;
-      if (f.to   && d && d > new Date(f.to + "T23:59:59")) return false;
+      const d = r.published_at ? r.published_at.slice(0, 10) : null;
+      if (hFrom && d && d < hFrom) return false;
+      if (hTo   && d && d > hTo)   return false;
       return true;
     }).sort((a, b) => {
       const da = parseDate(a.published_at), db = parseDate(b.published_at);
@@ -480,12 +499,12 @@ function render() {
   document.getElementById("highTitle").textContent = `🎯 핵심 모니터링 (${highRows.length}건)`;
   document.getElementById("highTable").innerHTML = buildTable(highRows, 400);
 
-  // 전략 신호 — 고정 3일 기준, paywall only (사이드바 날짜 필터 미적용)
-  const signal3dAgo = new Date(); signal3dAgo.setDate(signal3dAgo.getDate() - 3); signal3dAgo.setHours(0,0,0,0);
+  // 전략 신호 — 최신 2일치 자동 기준, paywall only (사이드바 날짜 필터 미적용)
+  const { from: sigFrom } = getLatestDateRange(allRows);
   const signalBase = allRows.filter(r => {
     if (f.hideP && r.access_limited === "True") return false;
-    const d = parseDate(r.published_at);
-    if (!d || d < signal3dAgo) return false;
+    const d = r.published_at ? r.published_at.slice(0, 10) : null;
+    if (!d || (sigFrom && d < sigFrom)) return false;
     return true;
   });
 
@@ -521,9 +540,17 @@ function render() {
   document.querySelector("#tab-gp .tbl-wrap").innerHTML          = buildTable(gp, 500);
   document.querySelector("#tab-sh .tbl-wrap").innerHTML          = buildTable(sh, 500);
 
-  // 전체 기사 (건수 = base.length = 사이드바 필터 적용 후 실제 rows)
-  document.getElementById("allTitle").textContent = `전체 기사 (${base.length}건)`;
-  document.getElementById("allTable").innerHTML = buildTable(base, 600);
+  // 전체 기사 — 사이드바 필터 + 검색어 AND
+  const searchQ = (document.getElementById("searchInput").value || "").trim().toLowerCase();
+  const baseFiltered = searchQ
+    ? base.filter(r =>
+        (r.title || "").toLowerCase().includes(searchQ) ||
+        (r.summary || "").toLowerCase().includes(searchQ) ||
+        (r.claude_rationale || "").toLowerCase().includes(searchQ)
+      )
+    : base;
+  document.getElementById("allTitle").textContent = `전체 기사 (${baseFiltered.length}건)`;
+  document.getElementById("allTable").innerHTML = buildTable(baseFiltered, 600);
 }
 
 /* ── Populate filter dropdowns ── */
@@ -543,12 +570,12 @@ function populateSelects(rows) {
   });
 }
 
-/* ── Default date range (7 days) ── */
+/* ── Default date range (30 days) ── */
 function setDefaultDates() {
-  const today   = new Date();
-  const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 3);
+  const today    = new Date();
+  const monthAgo = new Date(today); monthAgo.setDate(today.getDate() - 30);
   const fmt = d => d.toISOString().slice(0, 10);
-  ["d_from", "m_from"].forEach(id => document.getElementById(id).value = fmt(weekAgo));
+  ["d_from", "m_from"].forEach(id => document.getElementById(id).value = fmt(monthAgo));
   ["d_to",   "m_to"  ].forEach(id => document.getElementById(id).value = fmt(today));
 }
 
@@ -584,6 +611,7 @@ function bindEvents() {
   const mIds = ["m_category","m_sector","m_from","m_to","m_hide_paywall"];
   dIds.forEach(id => document.getElementById(id).addEventListener("change", () => { syncFilters("d"); render(); }));
   mIds.forEach(id => document.getElementById(id).addEventListener("change", () => { syncFilters("m"); render(); }));
+  document.getElementById("searchInput").addEventListener("input", render);
 }
 
 /* ── Load CSV ── */
