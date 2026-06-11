@@ -16,14 +16,14 @@ CSV_COLUMNS = [
     "woomi_relevance", "claude_rationale", "access_limited",
 ]
 
-MAJOR_PLATFORMS = ["core spaces", "landmark", "greystar"]
+MAJOR_PLATFORMS = ["core spaces", "landmark", "greystar", "hackberry", "balfour", "dinerstein"]
+PLATFORM_KEYWORDS = ["platform", "portfolio"]
 
 def has_tag(event_tags: str, *tags) -> bool:
     parts = {t.strip().lower() for t in event_tags.split(",")}
     return any(t.lower() in parts for t in tags)
 
 def mentions_beds_500plus(text: str) -> bool:
-    # 500+ beds: "500 beds", "600-bed", "1,000 beds", etc.
     matches = re.findall(r"([\d,]+)\s*[-\s]?bed", text, re.IGNORECASE)
     for m in matches:
         try:
@@ -34,7 +34,6 @@ def mentions_beds_500plus(text: str) -> bool:
     return False
 
 def mentions_50m_plus(text: str) -> bool:
-    # $50M+: "$50M", "$50 million", "$100M", etc.
     matches = re.findall(r"\$([\d,.]+)\s*(m|million|b|billion)", text, re.IGNORECASE)
     for amount, unit in matches:
         try:
@@ -51,26 +50,27 @@ def mentions_major_platform(text: str) -> bool:
     lower = text.lower()
     return any(p in lower for p in MAJOR_PLATFORMS)
 
+def mentions_platform_keyword(text: str) -> bool:
+    lower = text.lower()
+    return any(k in lower for k in PLATFORM_KEYWORDS)
+
 def should_keep_high(row: dict) -> bool:
     tags = row.get("event_tags", "")
     title = row.get("title", "")
     summary = row.get("summary", "")
     combined = f"{title} {summary}"
 
-    # 조건 1: construction_start 또는 delivery + 500beds 이상
-    if has_tag(tags, "construction_start", "delivery") and mentions_beds_500plus(combined):
-        return True
-
-    # 조건 2: title/summary에 주요 플랫폼 언급
     if mentions_major_platform(combined):
         return True
-
-    # 조건 3: transaction 태그 + $50M 이상
-    if has_tag(tags, "transaction") and mentions_50m_plus(combined):
+    if mentions_50m_plus(combined):
         return True
-
-    # 조건 4: JV 태그 + 주요 플랫폼 언급
-    if has_tag(tags, "jv") and mentions_major_platform(combined):
+    if mentions_beds_500plus(combined):
+        return True
+    if has_tag(tags, "transaction") and has_tag(tags, "acquisition"):
+        return True
+    if has_tag(tags, "jv"):
+        return True
+    if mentions_platform_keyword(combined):
         return True
 
     return False

@@ -451,18 +451,22 @@ function render() {
       return db - da;
     });
 
-    // 2. 중복 제거 (URL 동일 OR title 앞 40자 동일) — 최신 기사 우선(정렬 후이므로 첫 등장 유지)
-    const seenUrls  = new Set();
-    const seenTitles = new Set();
-    const candidates = raw.filter(r => {
+    // 2. 중복 제거: URL 동일 OR (같은 날짜 + 공통 단어 3개 이상)
+    function isDuplicate(a, b) {
+      if ((a.published_at || "").slice(0, 10) !== (b.published_at || "").slice(0, 10)) return false;
+      const wordsA = (a.title || "").toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      const wordsB = new Set((b.title || "").toLowerCase().split(/\s+/).filter(w => w.length > 3));
+      return wordsA.filter(w => wordsB.has(w)).length >= 3;
+    }
+    const seenUrls = new Set();
+    const candidates = raw.reduce((acc, r) => {
       const url = (r.url || "").trim();
-      const tkey = (r.title || "").trim().slice(0, 40).toLowerCase();
-      if (url && seenUrls.has(url)) return false;
-      if (tkey && seenTitles.has(tkey)) return false;
+      if (url && seenUrls.has(url)) return acc;
+      if (acc.some(a => isDuplicate(a, r))) return acc;
       if (url) seenUrls.add(url);
-      if (tkey) seenTitles.add(tkey);
-      return true;
-    });
+      acc.push(r);
+      return acc;
+    }, []);
 
     // 3. SH 캡 적용
     const sh    = candidates.filter(r => r.sector === "Student Housing");
