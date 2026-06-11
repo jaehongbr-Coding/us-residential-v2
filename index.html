@@ -437,7 +437,8 @@ function render() {
 
   // ⭐ 우미 관련 높음 (always hide paywall regardless of toggle)
   const highRows = (() => {
-    const candidates = allRows.filter(r => {
+    // 1. 기본 필터
+    const raw = allRows.filter(r => {
       if (r.access_limited === "True") return false;
       if (r.woomi_relevance !== "높음") return false;
       const d = parseDate(r.published_at);
@@ -450,12 +451,24 @@ function render() {
       return db - da;
     });
 
+    // 2. 중복 제거 (URL 동일 OR title 앞 40자 동일) — 최신 기사 우선(정렬 후이므로 첫 등장 유지)
+    const seenUrls  = new Set();
+    const seenTitles = new Set();
+    const candidates = raw.filter(r => {
+      const url = (r.url || "").trim();
+      const tkey = (r.title || "").trim().slice(0, 40).toLowerCase();
+      if (url && seenUrls.has(url)) return false;
+      if (tkey && seenTitles.has(tkey)) return false;
+      if (url) seenUrls.add(url);
+      if (tkey) seenTitles.add(tkey);
+      return true;
+    });
+
+    // 3. SH 캡 적용
     const sh    = candidates.filter(r => r.sector === "Student Housing");
     const nonSh = candidates.filter(r => r.sector !== "Student Housing");
 
-    const shCapped = sh.slice(0, 3);
-
-    return [...nonSh, ...shCapped];
+    return [...nonSh, ...sh.slice(0, 5)];
   })();
   document.getElementById("highTitle").textContent = `🎯 핵심 모니터링 (${highRows.length}건)`;
   document.getElementById("highTable").innerHTML = buildTable(highRows, 400);
