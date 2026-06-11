@@ -44,11 +44,17 @@ woomi_relevance: CSV 저장만, UI 미노출
 - 주간 리포트 자동 생성 GitHub Actions 추가 (매주 월요일 06:00 KST)
 - 기사 보관기간 90일로 확장
 - 분기/반기 리포트: weekly .md 재요약 방식 설계 완료
+- 핵심 모니터링 SH 캡 5건 + 중복 제거 로직 (isDuplicate) 적용
+- 기존 SH 높음 기사 룰베이스 재분류 (77건→23건 높음 유지, reclassify_sh.py)
+- classifier.py woomi_relevance 기준 보완:
+  BTR/SFR 착공·완공 규모 무관 높음 / Sun Belt MF 200+ units 개발 높음
+  건설비·캡레이트·기관센티먼트 시장 높음
+  Known GP (KW/HS/PCCP/Blue Vista/Lionheart/NexMetro/Middleburg/Hillpointe) 항상 높음
 
 ## 다음 작업
-1. 모바일 화면 최종 점검
-2. 전략 신호 모니터 필터 품질 검증
-3. 핵심 모니터링 Student Housing 비중 모니터링 (신규 기사 누적 후 자연 개선 예상)
+1. 신규 기사 BTR/시장/Known GP 높음 비중 모니터링 (3~4일 후 확인)
+2. 모바일 화면 최종 점검
+3. 전략 신호 모니터 필터 품질 검증
 4. 리포트 고도화: 월간(기사 충분히 누적 후) → 분기 → 반기 순차 확장
 5. Phase 3: 리포트 품질 고도화 (프롬프트 튜닝, 섹터별 심화 분석)
 
