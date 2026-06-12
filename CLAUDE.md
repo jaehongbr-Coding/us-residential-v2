@@ -50,9 +50,16 @@ woomi_relevance: CSV 저장만, UI 미노출
   BTR/SFR 착공·완공 규모 무관 높음 / Sun Belt MF 200+ units 개발 높음
   건설비·캡레이트·기관센티먼트 시장 높음
   Known GP (KW/HS/PCCP/Blue Vista/Lionheart/NexMetro/Middleburg/Hillpointe) 항상 높음
+- classifier.py 모델 Haiku → Sonnet 4.6 업그레이드
+- Batch API 적용 (건당 개별 호출 → 배치 1회 전송, 비용 50% 절감)
+- 핵심 모니터링·전략 신호 모니터 날짜 기준 변경:
+  고정 날짜 필터 → articles.csv 최신 날짜 기준 자동 2일치 (getLatestDateRange)
+- getLatestDateRange() 버그 수정 (latest-1일 고정)
+- 전체 기사 섹션 검색 기능 추가 (title·summary·분류근거 실시간 검색)
+- 사이드바 기본 날짜 3일 → 30일 (전체 기사 탐색용)
 
 ## 다음 작업
-1. 신규 기사 BTR/시장/Known GP 높음 비중 모니터링 (3~4일 후 확인)
+1. 내일 Sonnet 분류 결과 확인 (높음 비중 개선 여부)
 2. 모바일 화면 최종 점검
 3. 전략 신호 모니터 필터 품질 검증
 4. 리포트 고도화: 월간(기사 충분히 누적 후) → 분기 → 반기 순차 확장
