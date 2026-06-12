@@ -350,8 +350,9 @@ function getLatestDateRange(rows) {
     .reverse();
   if (!dates.length) return { from: null, to: null };
   const latest = dates[0];
-  const from = dates.find(d => (new Date(latest) - new Date(d)) / (1000 * 60 * 60 * 24) >= 2)
-    || dates[dates.length - 1];
+  const latestDate = new Date(latest);
+  latestDate.setDate(latestDate.getDate() - 1);
+  const from = latestDate.toISOString().slice(0, 10);
   return { from, to: latest };
 }
 
