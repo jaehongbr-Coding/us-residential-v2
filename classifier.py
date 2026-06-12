@@ -25,7 +25,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 ARTICLES_CSV  = "articles.csv"
 BATCH_SIZE    = 300
-MODEL         = "claude-haiku-4-5"
+MODEL         = "claude-sonnet-4-6"
 
 CSV_COLUMNS = [
     "article_id", "collected_at", "published_at", "source",
@@ -118,48 +118,78 @@ def build_prompt(article: dict) -> str:
 
 
 # ------------------------------------------------------------------
-# 3. Claude 호출
+# 3. 결과 파싱
 # ------------------------------------------------------------------
 
-def classify_article(client: anthropic.Anthropic, article: dict) -> dict:
-    empty = {
-        "category": "", "event_tags": "", "signal_type": "",
-        "sector": "", "woomi_relevance": "", "claude_rationale": "",
-    }
+EMPTY_RESULT = {
+    "category": "", "event_tags": "", "signal_type": "",
+    "sector": "", "woomi_relevance": "", "claude_rationale": "",
+}
+
+def parse_result(raw: str, article_id: str) -> dict:
+    empty = dict(EMPTY_RESULT)
     try:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=300,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": build_prompt(article)}],
-        )
-        raw = response.content[0].text.strip()
-        # 코드펜스(```json ... ```) 제거: split 결과 [0]='' [1]=내용 [2]=''
-        if raw.startswith("```"):
-            parts = raw.split("```")
-            raw = parts[1].lstrip("json").strip() if len(parts) >= 2 else raw
-        result = json.loads(raw)
-        # event_tags: list → 쉼표 구분 문자열로 변환 (CSV 저장용)
+        text = raw.strip()
+        if text.startswith("```"):
+            parts = text.split("```")
+            text = parts[1].lstrip("json").strip() if len(parts) >= 2 else text
+        result = json.loads(text)
         if isinstance(result.get("event_tags"), list):
             result["event_tags"] = ",".join(result["event_tags"])
-        # 필수 키 보정
         for key in empty:
             if key not in result:
                 result[key] = ""
         return result
     except json.JSONDecodeError:
-        print(f"    [WARN] JSON 파싱 실패: {article['article_id']}")
-        return empty
-    except anthropic.APIError as e:
-        print(f"    [WARN] API 오류 ({article['article_id']}): {e}")
+        print(f"    [WARN] JSON 파싱 실패: {article_id}")
         return empty
     except Exception as e:
-        print(f"    [WARN] 예외 ({article['article_id']}): {e}")
+        print(f"    [WARN] 파싱 예외 ({article_id}): {e}")
         return empty
 
 
 # ------------------------------------------------------------------
-# 4. CSV read / write-back
+# 4. Batch API 호출
+# ------------------------------------------------------------------
+
+def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> dict[str, dict]:
+    """배치 요청 전송 → polling → {article_id: result_dict} 반환"""
+    requests = [
+        {
+            "custom_id": article["article_id"],
+            "params": {
+                "model": MODEL,
+                "max_tokens": 300,
+                "system": SYSTEM_PROMPT,
+                "messages": [{"role": "user", "content": build_prompt(article)}],
+            },
+        }
+        for article in batch_articles
+    ]
+
+    batch = client.messages.batches.create(requests=requests)
+    print(f"    배치 생성 완료: {batch.id} ({len(requests)}건)")
+
+    while batch.processing_status != "ended":
+        time.sleep(30)
+        batch = client.messages.batches.retrieve(batch.id)
+        print(f"    상태: {batch.processing_status} ...")
+
+    results: dict[str, dict] = {}
+    for item in client.messages.batches.results(batch.id):
+        aid = item.custom_id
+        if item.result.type == "succeeded":
+            raw = item.result.message.content[0].text
+            results[aid] = parse_result(raw, aid)
+        else:
+            print(f"    [WARN] 배치 실패: {aid} ({item.result.type})")
+            results[aid] = dict(EMPTY_RESULT)
+
+    return results
+
+
+# ------------------------------------------------------------------
+# 5. CSV read / write-back
 # ------------------------------------------------------------------
 
 def load_articles() -> list[dict]:
@@ -177,7 +207,7 @@ def save_articles(articles: list[dict]) -> None:
 
 
 # ------------------------------------------------------------------
-# 5. 실행
+# 6. 실행
 # ------------------------------------------------------------------
 
 def run_classifier() -> dict:
@@ -197,28 +227,30 @@ def run_classifier() -> dict:
         return {"success": 0, "failed": 0, "remaining": 0}
 
     unclassified = [a for a in articles if a.get("classified", "").lower() != "true"]
-    batch = unclassified[:BATCH_SIZE]
+    batch_articles = unclassified[:BATCH_SIZE]
 
-    if not batch:
+    if not batch_articles:
         return {"success": 0, "failed": 0, "remaining": 0}
+
+    article_map = {a["article_id"]: a for a in articles}
+
+    batch_results = classify_batch(client, batch_articles)
 
     success = 0
     failed  = 0
-    article_map = {a["article_id"]: a for a in articles}
-
-    for article in batch:
-        result = classify_article(client, article)
+    for article in batch_articles:
+        aid = article["article_id"]
+        result = batch_results.get(aid, dict(EMPTY_RESULT))
         if result["woomi_relevance"]:
-            article_map[article["article_id"]].update(result)
-            article_map[article["article_id"]]["classified"] = True
+            article_map[aid].update(result)
+            article_map[aid]["classified"] = True
             success += 1
         else:
             failed += 1
-        time.sleep(0.3)
 
     save_articles(list(article_map.values()))
 
-    remaining = len(unclassified) - len(batch)
+    remaining = len(unclassified) - len(batch_articles)
     return {"success": success, "failed": failed, "remaining": remaining}
 
 
