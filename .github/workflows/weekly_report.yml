@@ -5,6 +5,9 @@ on:
     - cron: '0 21 * * 0'  # 매주 일요일 21:00 UTC = 월요일 06:00 KST
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   weekly-report:
     runs-on: ubuntu-latest
@@ -24,22 +27,28 @@ jobs:
       - name: Collect articles
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
         run: python collector.py
 
       - name: Classify articles
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
         run: python classifier.py
 
       - name: Generate weekly report
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
         run: python weekly_report.py --period weekly --export docx
 
-      - name: Commit and push reports
+      - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push reports
+        run: |
           git add articles.csv reports/*.md reports/*.docx
           git diff --cached --quiet || git commit -m "자동 주간 리포트 생성 $(date +%Y%m%d)"
           git push
