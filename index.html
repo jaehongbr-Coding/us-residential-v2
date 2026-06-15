@@ -682,15 +682,26 @@ async function loadSelectedReport() {
     const text = await res.text();
     content.innerHTML = marked.parse(text);
 
-    // docx 버튼: .md → .docx 동일 파일명 존재 여부 확인 후 표시
+    // docx 버튼: 항상 표시, HEAD 확인 후 활성/비활성 처리
     const docxName = fname.replace(/\.md$/, ".docx");
     const docxUrl  = `${REPO_RAW}/reports/${docxName}`;
-    const check    = await fetch(docxUrl, { method: "HEAD" });
-    if (check.ok) {
-      docxBtn.href         = docxUrl;
-      docxBtn.download     = docxName;
-      docxBtn.style.display = "inline-block";
-    }
+    docxBtn.href          = docxUrl;
+    docxBtn.download      = docxName;
+    docxBtn.style.display = "inline-block";
+    docxBtn.style.opacity = "0.5";
+    docxBtn.style.pointerEvents = "none";
+    docxBtn.title = "확인 중...";
+    fetch(docxUrl, { method: "HEAD" }).then(check => {
+      if (check.ok) {
+        docxBtn.style.opacity = "1";
+        docxBtn.style.pointerEvents = "auto";
+        docxBtn.title = "";
+      } else {
+        docxBtn.title = "Word 파일이 아직 생성되지 않았습니다";
+      }
+    }).catch(() => {
+      docxBtn.title = "Word 파일 확인 실패";
+    });
   } catch (e) {
     content.innerHTML = `<p style="color:#c00">로드 실패: ${e.message}</p>`;
   }
