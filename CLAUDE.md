@@ -57,13 +57,18 @@ woomi_relevance: CSV 저장만, UI 미노출
 - getLatestDateRange() 버그 수정 (latest-1일 고정)
 - 전체 기사 섹션 검색 기능 추가 (title·summary·분류근거 실시간 검색)
 - 사이드바 기본 날짜 3일 → 30일 (전체 기사 탐색용)
+- weekly_report.yml GitHub Actions 생성 완료 (매주 월요일 06:00 KST 자동 실행)
+- weekly_report.yml permissions: contents: write + git config 설정 추가
+- woomi_relevance 기준 보완: MF 추가 + Student Housing 500beds 명시
+- 인텔리전스 리포트 Word 다운로드 버튼 항상 표시 (docx 존재 여부 확인 후 활성/비활성)
+- 국문 요약 기능 추가: korean_summary 필드 (classifier.py) + 기사 클릭 팝업 (index.html)
+- articles.csv korean_summary 컬럼 추가 (신규 기사부터 생성, 기존 기사 빈값 유지)
 
 ## 다음 작업
-1. 내일 Sonnet 분류 결과 확인 (높음 비중 개선 여부)
+1. 국문 요약 팝업 동작 확인 (신규 기사 수집 후)
 2. 모바일 화면 최종 점검
-3. 전략 신호 모니터 필터 품질 검증
-4. 리포트 고도화: 월간(기사 충분히 누적 후) → 분기 → 반기 순차 확장
-5. Phase 3: 리포트 품질 고도화 (프롬프트 튜닝, 섹터별 심화 분석)
+3. 리포트 고도화: 월간(기사 충분히 누적 후) → 분기 → 반기 순차 확장
+4. Phase 3: 리포트 품질 고도화 (프롬프트 튜닝, 섹터별 심화 분석)
 
 ## Phase 2: 인텔리전스 리포트 (기존 가설검증 화면 대체)
 - 방향: 수집 기사 기반 주간/월간/분기/반기 원페이저 자동 생성
