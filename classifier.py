@@ -31,7 +31,7 @@ CSV_COLUMNS = [
     "article_id", "collected_at", "published_at", "source",
     "title", "url", "summary", "classified",
     "category", "event_tags", "signal_type", "sector",
-    "woomi_relevance", "claude_rationale", "access_limited",
+    "woomi_relevance", "claude_rationale", "access_limited", "korean_summary",
 ]
 
 SYSTEM_PROMPT = """You are a real estate research analyst for Woomi Global, a Korean residential developer active in the US market.
@@ -53,7 +53,8 @@ Classify the given article and return ONLY a JSON object with these exact fields
   "signal_type":      one of ["강세" | "약세" | "중립" | "혼재"],
   "sector":           one of ["Multifamily" | "BTR" | "SFR" | "Student Housing" | "Senior Housing" | "Affordable Housing" | "Workforce Housing" | "Mixed-use"],
   "woomi_relevance":  one of ["높음" | "보통" | "낮음"],
-  "claude_rationale": one sentence in Korean explaining the classification
+  "claude_rationale": one sentence in Korean explaining the classification,
+  "korean_summary":   "3~5문장 한국어 요약. 핵심 내용, 주요 수치, 우미글로벌 관점의 의미를 포함."
 }
 
 category rules — EXACTLY one of ["개발", "시장", "GP·자본흐름"]. No other value is valid.
@@ -101,6 +102,12 @@ woomi_relevance rules (apply differently by category):
 - "보통": general MF development plan announcement in other markets; small-scale groundbreaking under $50M and under 200 units outside Sun Belt; Student Housing project under 500 beds (not units, beds) not involving major platform
 - "낮음": vague development intent, speculative land acquisition article
 
+korean_summary rules:
+- 3~5 sentences in Korean
+- Include: core news content, key figures ($, units/beds, %, location), and one sentence on strategic relevance to Woomi Global
+- Do NOT repeat claude_rationale verbatim
+- If article is unrelated to residential real estate, write "주거 부동산과 직접적 관련이 없는 기사입니다." only
+
 Return only the JSON object. No explanation, no markdown, no code fences.
 """
 
@@ -123,7 +130,7 @@ def build_prompt(article: dict) -> str:
 
 EMPTY_RESULT = {
     "category": "", "event_tags": "", "signal_type": "",
-    "sector": "", "woomi_relevance": "", "claude_rationale": "",
+    "sector": "", "woomi_relevance": "", "claude_rationale": "", "korean_summary": "",
 }
 
 def parse_result(raw: str, article_id: str) -> dict:
