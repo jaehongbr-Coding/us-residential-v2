@@ -169,7 +169,7 @@ def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> d
             "custom_id": article["article_id"],
             "params": {
                 "model": MODEL,
-                "max_tokens": 500,
+                "max_tokens": 1500,
                 "system": SYSTEM_PROMPT,
                 "messages": [{"role": "user", "content": build_prompt(article)}],
             },
@@ -191,6 +191,9 @@ def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> d
         if item.result.type == "succeeded":
             raw = item.result.message.content[0].text
             results[aid] = parse_result(raw, aid)
+        elif item.result.type == "errored":
+            print(f"  [BATCH ERROR] {aid}: {item.result.error}")
+            results[aid] = dict(EMPTY_RESULT)
         else:
             print(f"    [WARN] 배치 실패: {aid} ({item.result.type})")
             results[aid] = dict(EMPTY_RESULT)
