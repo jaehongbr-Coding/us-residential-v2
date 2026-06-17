@@ -25,6 +25,16 @@ event_tags (복수): construction_start / delivery / permit /
 financing 규칙: category 결정에 절대 사용 안 함, event_tags에만
 woomi_relevance: CSV 저장만, UI 미노출
 
+## 작업 시작 전 필수 규칙
+- 모든 작업 시작 전 반드시 `git pull --no-rebase` 먼저 실행
+- articles.csv는 GitHub Actions(Daily Collect & Classify)가 수시로 업데이트하므로,
+  로컬에서 분류/재분류 작업 시작 전 항상 원격 최신본 확인 필수
+- classifier.py 또는 reclassify 스크립트 실행 전: git pull로 최신 articles.csv 확보
+- 동일 스크립트(classifier.py 등) 중복 실행 금지 — Batch API 특성상 중복 배치가
+  Anthropic 서버에 쌓여 처리 지연 발생 가능
+- 백그라운드 실행 시 출력이 안 보이면 즉시 중단하고 터미널에서 직접 실행 확인
+  (PowerShell 백그라운드 셸은 출력 버퍼링 문제 있음)
+
 ## 현재 완료 상태 (2026.06)
 - 220건 수집·분류 완료
 - RSS 피드 30개 + Blue Vista 175개 대학 Student Housing Google News RSS 추가
@@ -63,11 +73,14 @@ woomi_relevance: CSV 저장만, UI 미노출
 - 인텔리전스 리포트 Word 다운로드 버튼 항상 표시 (docx 존재 여부 확인 후 활성/비활성)
 - 국문 요약 기능 추가: korean_summary 필드 (classifier.py) + 기사 클릭 팝업 (index.html)
 - articles.csv korean_summary 컬럼 추가 (신규 기사부터 생성, 기존 기사 빈값 유지)
+- classifier.py max_tokens 500 → 1500 상향 (korean_summary 추가로 인한 JSON 파싱 실패 수정)
+- 06-16 기사 101건 전체 재분류 완료 (높음 17 / 보통 14 / 낮음 70)
+- getLatestDateRange 정상 동작 확인, 핵심 모니터링 06-16 기사 16건 정상 표시
 
 ## 다음 작업
-1. 국문 요약 팝업 동작 확인 (신규 기사 수집 후)
+1. 국문 요약(korean_summary) 팝업 품질 확인 (max_tokens 1500 적용 후 신규 기사)
 2. 모바일 화면 최종 점검
-3. 리포트 고도화: 월간(기사 충분히 누적 후) → 분기 → 반기 순차 확장
+3. 리포트 고도화: 월간 → 분기 → 반기 순차 확장
 4. Phase 3: 리포트 품질 고도화 (프롬프트 튜닝, 섹터별 심화 분석)
 
 ## Phase 2: 인텔리전스 리포트 (기존 가설검증 화면 대체)
