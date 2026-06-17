@@ -530,16 +530,17 @@ function render() {
   // Base filtered (with date + category + sector + paywall)
   const base = applyBaseFilters(allRows, f);
 
-  // ⭐ 우미 관련 높음 (사이드바 날짜 무관, 최신 2일치 자동 기준)
+  // 전체 기사 기준 최신 날짜 범위 (핵심 모니터링 + 전략 신호 공용)
+  const { from: latestFrom, to: latestTo } = getLatestDateRange(allRows);
+
+  // ⭐ 핵심 모니터링 (전체 기사 최신 날짜 기준 2일치, 높음=0건이면 3일치로 확장)
   const highRows = (() => {
-    const { from: hFrom, to: hTo } = getLatestDateRange(allRows);
-    // 1. 기본 필터
+    // 1. 기본 필터 — 전체 기사 최신 날짜 기준
     const candidates = allRows.filter(r => {
       if (r.access_limited === "True") return false;
       if (r.woomi_relevance !== "높음") return false;
       const d = r.published_at ? r.published_at.slice(0, 10) : null;
-      if (hFrom && d && d < hFrom) return false;
-      if (hTo   && d && d > hTo)   return false;
+      if (!d || d < latestFrom) return false;
       return true;
     }).sort((a, b) => {
       const da = parseDate(a.published_at), db = parseDate(b.published_at);
@@ -553,35 +554,41 @@ function render() {
       const properB = new Set((b.title || "").split(/\s+/).filter(w => /^[A-Z]/.test(w) && w.length > 3));
       return properA.filter(w => properB.has(w)).length >= 2;
     }
-    const deduped = candidates.reduce((acc, r) => {
+    let deduped = candidates.reduce((acc, r) => {
       if (!acc.some(a => isDup(a, r))) acc.push(r);
       return acc;
     }, []);
 
-    // 3. 최신 날짜 기준 — 3건 미만이면 다음 날짜까지 포함
-    const allDates = [...new Set(deduped.map(r => fmtDate(r.published_at)).filter(Boolean))].sort().reverse();
-    let dateFiltered = [];
-    for (const d of allDates) {
-      dateFiltered = deduped.filter(r =>
-        allDates.slice(0, allDates.indexOf(d) + 1).includes(fmtDate(r.published_at))
-      );
-      if (dateFiltered.length >= 3) break;
+    // 3. 높음 0건이면 3일치로 확장
+    if (!deduped.length) {
+      const extDate = new Date(latestTo);
+      extDate.setDate(extDate.getDate() - 2);
+      const extFrom = extDate.toISOString().slice(0, 10);
+      const ext = allRows.filter(r => {
+        if (r.access_limited === "True") return false;
+        if (r.woomi_relevance !== "높음") return false;
+        const d = r.published_at ? r.published_at.slice(0, 10) : null;
+        return d && d >= extFrom;
+      });
+      deduped = ext.reduce((acc, r) => {
+        if (!acc.some(a => isDup(a, r))) acc.push(r);
+        return acc;
+      }, []);
     }
 
     // 4. SH 캡 5건
-    const nonSh = dateFiltered.filter(r => r.sector !== "Student Housing");
-    const sh    = dateFiltered.filter(r => r.sector === "Student Housing");
+    const nonSh = deduped.filter(r => r.sector !== "Student Housing");
+    const sh    = deduped.filter(r => r.sector === "Student Housing");
     return [...nonSh, ...sh.slice(0, 5)];
   })();
   document.getElementById("highTitle").textContent = `🎯 핵심 모니터링 (${highRows.length}건)`;
   document.getElementById("highTable").innerHTML = buildTable(highRows, 400);
 
-  // 전략 신호 — 최신 2일치 자동 기준, paywall only (사이드바 날짜 필터 미적용)
-  const { from: sigFrom } = getLatestDateRange(allRows);
+  // 전략 신호 — 전체 기사 최신 날짜 기준 2일치 (latestFrom 공용)
   const signalBase = allRows.filter(r => {
     if (f.hideP && r.access_limited === "True") return false;
     const d = r.published_at ? r.published_at.slice(0, 10) : null;
-    if (!d || (sigFrom && d < sigFrom)) return false;
+    if (!d || (latestFrom && d < latestFrom)) return false;
     return true;
   });
 

@@ -103,8 +103,11 @@ woomi_relevance rules (apply differently by category):
 - "낮음": vague development intent, speculative land acquisition article
 
 korean_summary rules:
-- 3~5 sentences in Korean
-- Include: core news content, key figures ($, units/beds, %, location), and one sentence on strategic relevance to Woomi Global
+- 5~7 sentences in Korean. Structure:
+  1) 핵심 뉴스 요약 (what happened, who, where)
+  2) 주요 수치 ($, units/beds, %, location 모두 포함)
+  3) 시장 맥락 (why it matters in current market)
+  4) 우미글로벌 관점 전략적 의미 (1~2문장)
 - Do NOT repeat claude_rationale verbatim
 - If article is unrelated to residential real estate, write "주거 부동산과 직접적 관련이 없는 기사입니다." only
 
@@ -166,7 +169,7 @@ def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> d
             "custom_id": article["article_id"],
             "params": {
                 "model": MODEL,
-                "max_tokens": 300,
+                "max_tokens": 500,
                 "system": SYSTEM_PROMPT,
                 "messages": [{"role": "user", "content": build_prompt(article)}],
             },
