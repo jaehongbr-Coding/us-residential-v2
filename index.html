@@ -722,6 +722,7 @@ Papa.parse(CSV_URL, {
 const REPO_RAW   = "https://raw.githubusercontent.com/jaehongbr-Coding/us-residential-v2/main";
 const REPO_API   = "https://api.github.com/repos/jaehongbr-Coding/us-residential-v2/contents/reports";
 const PERIOD_KO  = { weekly: "주간", monthly: "월간", quarterly: "분기", "semi-annual": "반기" };
+const docxFiles  = new Set();
 
 async function loadReportList() {
   const sel    = document.getElementById("reportSelect");
@@ -730,6 +731,7 @@ async function loadReportList() {
     const res  = await fetch(REPO_API);
     if (!res.ok) throw new Error("목록 조회 실패");
     const files = await res.json();
+    files.filter(f => f.name.endsWith(".docx")).forEach(f => docxFiles.add(f.name));
     const mds   = files.filter(f => f.name.endsWith(".md")).sort((a, b) => b.name.localeCompare(a.name));
     if (!mds.length) { status.textContent = "리포트 없음"; return; }
     mds.forEach(f => {
@@ -765,26 +767,21 @@ async function loadSelectedReport() {
     const text = await res.text();
     content.innerHTML = marked.parse(text);
 
-    // docx 버튼: 항상 표시, HEAD 확인 후 활성/비활성 처리
+    // docx 버튼: 파일 목록에서 존재 여부 즉시 확인
     const docxName = fname.replace(/\.md$/, ".docx");
     const docxUrl  = `${REPO_RAW}/reports/${docxName}`;
     docxBtn.href          = docxUrl;
     docxBtn.download      = docxName;
     docxBtn.style.display = "inline-block";
-    docxBtn.style.opacity = "0.5";
-    docxBtn.style.pointerEvents = "none";
-    docxBtn.title = "확인 중...";
-    fetch(docxUrl, { method: "HEAD" }).then(check => {
-      if (check.ok) {
-        docxBtn.style.opacity = "1";
-        docxBtn.style.pointerEvents = "auto";
-        docxBtn.title = "";
-      } else {
-        docxBtn.title = "Word 파일이 아직 생성되지 않았습니다";
-      }
-    }).catch(() => {
-      docxBtn.title = "Word 파일 확인 실패";
-    });
+    if (docxFiles.has(docxName)) {
+      docxBtn.style.opacity = "1";
+      docxBtn.style.pointerEvents = "auto";
+      docxBtn.title = "";
+    } else {
+      docxBtn.style.opacity = "0.5";
+      docxBtn.style.pointerEvents = "none";
+      docxBtn.title = "Word 파일이 아직 생성되지 않았습니다";
+    }
   } catch (e) {
     content.innerHTML = `<p style="color:#c00">로드 실패: ${e.message}</p>`;
   }
