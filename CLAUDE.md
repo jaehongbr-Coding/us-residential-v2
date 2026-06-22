@@ -76,12 +76,17 @@ woomi_relevance: CSV 저장만, UI 미노출
 - classifier.py max_tokens 500 → 1500 상향 (korean_summary 추가로 인한 JSON 파싱 실패 수정)
 - 06-16 기사 101건 전체 재분류 완료 (높음 17 / 보통 14 / 낮음 70)
 - getLatestDateRange 정상 동작 확인, 핵심 모니터링 06-16 기사 16건 정상 표시
+- requirements.txt python-docx 누락 수정 (매주 Actions에서 docx 생성 실패하던 근본 원인)
+- marked.js 로딩 실패 대비 fallback 처리 추가 (모바일 CDN 이슈 대응, onerror 핸들러 + typeof 체크)
+- loadReportList GitHub API 방식으로 변경 (raw.githubusercontent.com CORS 실패 수정, docx 존재 여부 즉시 판단)
+- 06-23 주간 리포트 수동 생성 (md+docx, requirements.txt 수정 전 누락분 보완)
 
 ## 다음 작업
-1. 국문 요약(korean_summary) 팝업 품질 확인 (max_tokens 1500 적용 후 신규 기사)
-2. 모바일 화면 최종 점검
-3. 리포트 고도화: 월간 → 분기 → 반기 순차 확장
-4. Phase 3: 리포트 품질 고도화 (프롬프트 튜닝, 섹터별 심화 분석)
+1. 06-29(월) GitHub Actions 자동 실행 확인 — md+docx 동시 생성 여부
+2. 모바일 환경 리포트 렌더링 정상 동작 확인 (marked.js fallback 검증)
+3. 국문 요약(korean_summary) 팝업 품질 확인
+4. 리포트 고도화: 월간 → 분기 → 반기 순차 확장
+5. Phase 3: 리포트 품질 고도화 (프롬프트 튜닝, 섹터별 심화 분석)
 
 ## Phase 2: 인텔리전스 리포트 (기존 가설검증 화면 대체)
 - 방향: 수집 기사 기반 주간/월간/분기/반기 원페이저 자동 생성
