@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>US Residential Intelligence v2</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"
+          onerror="console.error('marked.js 로드 실패')"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -765,7 +766,14 @@ async function loadSelectedReport() {
     const res = await fetch(`${REPO_RAW}/reports/${fname}`);
     if (!res.ok) throw new Error("파일 로드 실패");
     const text = await res.text();
-    content.innerHTML = marked.parse(text);
+    let html;
+    if (typeof marked !== 'undefined') {
+      html = marked.parse(text);
+    } else {
+      html = '<p>리포트 로딩 중 오류가 발생했습니다. 새로고침해주세요.</p><pre>' +
+             text.replace(/</g, '&lt;') + '</pre>';
+    }
+    content.innerHTML = html;
 
     // docx 버튼: 파일 목록에서 존재 여부 즉시 확인
     const docxName = fname.replace(/\.md$/, ".docx");
