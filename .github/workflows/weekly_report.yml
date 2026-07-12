@@ -5,6 +5,10 @@ on:
     - cron: '0 21 * * 0'  # 매주 일요일 21:00 UTC = 월요일 06:00 KST
   workflow_dispatch:
 
+concurrency:
+  group: weekly-report
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -51,4 +55,5 @@ jobs:
         run: |
           git add articles.csv reports/*.md reports/*.docx
           git diff --cached --quiet || git commit -m "자동 주간 리포트 생성 $(date +%Y%m%d)"
+          git pull --rebase origin main
           git push
