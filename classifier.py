@@ -23,9 +23,10 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 # 1. 설정
 # ------------------------------------------------------------------
 
-ARTICLES_CSV  = "articles.csv"
-BATCH_SIZE    = 300
-MODEL         = "claude-sonnet-4-6"
+ARTICLES_CSV    = "articles.csv"
+BATCH_SIZE      = 300
+MODEL           = "claude-sonnet-4-6"
+BATCH_ID_FILE   = "current_batch_id.txt"
 
 CSV_COLUMNS = [
     "article_id", "collected_at", "published_at", "source",
@@ -162,6 +163,11 @@ def parse_result(raw: str, article_id: str) -> dict:
 # 4. Batch API 호출
 # ------------------------------------------------------------------
 
+def get_in_progress_batches(client: anthropic.Anthropic) -> list:
+    """Anthropic 계정에 processing_status == in_progress 인 배치 목록 반환"""
+    return [b for b in client.messages.batches.list(limit=20) if b.processing_status == "in_progress"]
+
+
 def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> dict[str, dict]:
     """배치 요청 전송 → polling → {article_id: result_dict} 반환"""
     requests = [
@@ -180,10 +186,16 @@ def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> d
     batch = client.messages.batches.create(requests=requests)
     print(f"    배치 생성 완료: {batch.id} ({len(requests)}건)")
 
+    with open(BATCH_ID_FILE, "w") as f:
+        f.write(batch.id)
+
     while batch.processing_status != "ended":
         time.sleep(30)
         batch = client.messages.batches.retrieve(batch.id)
         print(f"    상태: {batch.processing_status} ...")
+
+    if os.path.exists(BATCH_ID_FILE):
+        os.remove(BATCH_ID_FILE)
 
     results: dict[str, dict] = {}
     for item in client.messages.batches.results(batch.id):
@@ -245,6 +257,12 @@ def run_classifier() -> dict:
     if not batch_articles:
         return {"success": 0, "failed": 0, "remaining": 0}
 
+    in_progress = get_in_progress_batches(client)
+    if in_progress:
+        ids = ", ".join(b.id for b in in_progress)
+        print(f"[SKIP] 이미 in_progress 상태인 배치가 있어 새 배치를 제출하지 않습니다: {ids}")
+        return {"success": 0, "failed": 0, "remaining": len(unclassified), "skipped": True}
+
     article_map = {a["article_id"]: a for a in articles}
 
     batch_results = classify_batch(client, batch_articles)
@@ -286,6 +304,11 @@ def main():
         return
 
     result = run_classifier()
+
+    if result.get("skipped"):
+        print(f"\n--- 이번 실행 스킵 ---")
+        print(f"  남은 미분류: {result['remaining']}건 (다음 실행에서 재시도)")
+        return
 
     print(f"\n--- 분류 완료 ---")
     print(f"  성공: {result['success']}건")

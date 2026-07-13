@@ -40,6 +40,27 @@ jobs:
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
         run: python classifier.py
 
+      - name: Cancel batch on workflow cancellation
+        if: cancelled()
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ ! -f current_batch_id.txt ]; then
+            echo "배치 ID 파일 없음 — 취소할 배치 없음"
+            exit 0
+          fi
+          BATCH_ID=$(cat current_batch_id.txt)
+          STATUS=$(curl -s "https://api.anthropic.com/v1/messages/batches/$BATCH_ID" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" | grep -o '"processing_status":"[a-z_]*"' | cut -d'"' -f4)
+          echo "배치 $BATCH_ID 상태: $STATUS"
+          if [ "$STATUS" = "in_progress" ]; then
+            curl -s -X POST "https://api.anthropic.com/v1/messages/batches/$BATCH_ID/cancel" \
+              -H "x-api-key: $ANTHROPIC_API_KEY" \
+              -H "anthropic-version: 2023-06-01" > /dev/null
+            echo "배치 취소 요청 전송: $BATCH_ID"
+          fi
+
       - name: Generate weekly report
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

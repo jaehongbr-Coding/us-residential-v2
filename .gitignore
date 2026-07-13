@@ -8,6 +8,9 @@ __pycache__/
 *.pyo
 *.pyd
 
+# classifier.py 배치 상태 (실행 중에만 존재하는 임시 파일)
+current_batch_id.txt
+
 # Streamlit
 .streamlit/secrets.toml
 
