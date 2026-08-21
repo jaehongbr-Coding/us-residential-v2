@@ -13,6 +13,11 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"
           onerror="console.error('marked.js 로드 실패')"></script>
+  <script>
+    if (typeof Chart === 'undefined') {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js" onerror="console.error(\'Chart.js 로드 실패\')"><\/script>');
+    }
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -162,6 +167,18 @@
       .col-rationale { width: 140px; }
     }
 
+    /* ── Trend section ── */
+    .trend-charts { display: flex; flex-direction: column; gap: 20px; }
+    .trend-chart-box {
+      background: #fff;
+      border: 1px solid #1B3A5C;
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .trend-chart-title { font-size: 13px; font-weight: 600; color: #1B3A5C; margin-bottom: 10px; }
+    .trend-chart-canvas-wrap { position: relative; height: 250px; }
+    .trend-footnote { font-size: 11px; color: #999; margin-top: 10px; text-align: right; }
+
     /* ── Report section ── */
     #reportContent h2 { font-size: 16px; font-weight: 700; margin: 18px 0 6px; color: #222; }
     #reportContent h3 { font-size: 14px; font-weight: 600; margin: 14px 0 4px; color: #333; }
@@ -308,6 +325,28 @@
             style="flex:1;padding:7px 10px;font-size:13px;border:1px solid #ccc;border-radius:6px;" />
         </div>
         <div class="scroll-box"><div class="scroll-inner h-600 tbl-wrap" id="allTable"></div></div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid #eee;margin-bottom:24px" />
+
+      <!-- 📈 시장 트렌드 분석 -->
+      <div class="section">
+        <div class="section-title">📈 시장 트렌드 분석</div>
+        <div class="trend-charts">
+          <div class="trend-chart-box">
+            <div class="trend-chart-title">월별 수집 기사 카테고리 분포</div>
+            <div class="trend-chart-canvas-wrap"><canvas id="trendCategoryChart"></canvas></div>
+          </div>
+          <div class="trend-chart-box">
+            <div class="trend-chart-title">핵심 모니터링 선별 비율 추이</div>
+            <div class="trend-chart-canvas-wrap"><canvas id="trendHighRatioChart"></canvas></div>
+          </div>
+          <div class="trend-chart-box">
+            <div class="trend-chart-title">주요 GP 언급 빈도 추이</div>
+            <div class="trend-chart-canvas-wrap"><canvas id="trendGpChart"></canvas></div>
+          </div>
+        </div>
+        <div class="trend-footnote">데이터 기준: 2026.03~08.18, 총 5,272건</div>
       </div>
 
       <hr style="border:none;border-top:1px solid #eee;margin-bottom:24px" />
@@ -542,6 +581,76 @@ function render() {
   document.getElementById("allTable").innerHTML = buildTable(baseFiltered, 600);
 }
 
+/* ── Trend charts (하드코딩 데이터, articles.csv 실시간 연동 아님) ── */
+function renderTrendCharts() {
+  if (typeof Chart === 'undefined') { setTimeout(renderTrendCharts, 200); return; }
+
+  const months = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08'];
+
+  // 차트 1 — 월별 카테고리 분포 (Stacked Bar)
+  new Chart(document.getElementById('trendCategoryChart'), {
+    type: 'bar',
+    data: {
+      labels: months,
+      datasets: [
+        { label: '개발',        data: [18, 67, 101, 428, 529, 359], backgroundColor: '#1B3A5C' },
+        { label: '시장',        data: [56, 127, 307, 650, 701, 399], backgroundColor: '#2E75B6' },
+        { label: 'GP·자본흐름', data: [4, 13, 60, 505, 614, 333],   backgroundColor: '#E8A020' },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+    },
+  });
+
+  // 차트 2 — woomi_relevance 높음 비율 추이 (Line)
+  new Chart(document.getElementById('trendHighRatioChart'), {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [{
+        label: '높음 비율',
+        data: [3.8, 4.8, 11.3, 12.9, 14.5, 10.1],
+        borderColor: '#1B3A5C',
+        backgroundColor: 'rgba(27,58,92,0.15)',
+        fill: true,
+        tension: 0.3,
+        pointBackgroundColor: '#1B3A5C',
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { min: 0, max: 20, ticks: { callback: v => v + '%' } } },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => `${ctx.parsed.y}%` } },
+      },
+    },
+  });
+
+  // 차트 3 — 주요 GP 언급 빈도 추이 (Line, 멀티)
+  new Chart(document.getElementById('trendGpChart'), {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [
+        { label: 'Blackstone',     data: [0, 2, 3, 7, 12, 5],  borderColor: '#2E75B6', backgroundColor: '#2E75B6', tension: 0.3 },
+        { label: 'Brookfield',     data: [0, 0, 2, 10, 23, 8], borderColor: '#E8A020', backgroundColor: '#E8A020', tension: 0.3 },
+        { label: 'Core Spaces',    data: [1, 3, 4, 12, 18, 6], borderColor: '#3CA05A', backgroundColor: '#3CA05A', tension: 0.3 },
+        { label: 'Greystar',       data: [0, 1, 3, 8, 14, 5],  borderColor: '#C0392B', backgroundColor: '#C0392B', tension: 0.3 },
+        { label: 'Kennedy Wilson', data: [0, 1, 2, 5, 9, 4],   borderColor: '#8E44AD', backgroundColor: '#8E44AD', tension: 0.3 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true } },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+    },
+  });
+}
+
 /* ── Tab switching ── */
 function switchTab(btn) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
@@ -561,6 +670,7 @@ Papa.parse(CSV_URL, {
     document.getElementById("spinner").style.display = "none";
     document.getElementById("app").style.display = "block";
     render();
+    renderTrendCharts();
   },
   error(err) {
     document.getElementById("spinner").innerHTML =
