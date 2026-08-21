@@ -3,7 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>US Residential Intelligence v2</title>
+  <title>The Brief — Woomi Global</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1B3A5C">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="The Brief">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"
           onerror="console.error('marked.js 로드 실패')"></script>
@@ -80,10 +86,14 @@
       min-width: 0;
     }
 
-    /* ── Header ── */
-    header { margin-bottom: 20px; }
-    header h1 { font-size: 22px; font-weight: 700; }
-    header p  { font-size: 12px; color: #888; margin-top: 4px; }
+    /* ── App header (The Brief) ── */
+    .app-header { text-align: center; padding: 16px 0 8px; border-bottom: 2px solid #1B3A5C; margin-bottom: 20px; }
+    .app-header-meta { font-size: 10px; letter-spacing: 2px; color: #888; margin-bottom: 6px; }
+    .app-header-rule { height: 2px; background: #1B3A5C; margin: 6px 0; }
+    .app-header-title { display: flex; align-items: baseline; justify-content: center; gap: 10px; }
+    .app-header-the { font-size: 18px; font-weight: 500; letter-spacing: 5px; color: #1B3A5C; font-family: sans-serif; }
+    .app-header-brief { font-size: 48px; font-weight: 700; color: #1B3A5C; font-family: Georgia, serif; line-height: 1; }
+    .app-header-date { font-size: 10px; color: #888; margin-top: 4px; }
 
     /* ── Section ── */
     .section { margin-bottom: 28px; }
@@ -197,7 +207,7 @@
       .sidebar { display: none; }
       .mobile-filter-toggle { display: block; }
       .main { padding: 12px 14px; }
-      header h1 { font-size: 18px; }
+      .app-header-brief { font-size: 36px; }
       .col-sector, .col-tags { display: none; }
       .col-rationale { width: 140px; }
     }
@@ -334,10 +344,16 @@
       </div>
     </div>
 
-    <header>
-      <h1>🏠 US Residential Intelligence v2</h1>
-      <p>우미글로벌 해외사업팀 | 미국 주거시장 뉴스 수집·분류 대시보드</p>
-    </header>
+    <div class="app-header">
+      <div class="app-header-meta">우미글로벌 해외사업팀 | 미국 주거시장 인텔리전스</div>
+      <div class="app-header-rule"></div>
+      <div class="app-header-title">
+        <span class="app-header-the">THE</span>
+        <span class="app-header-brief">Brief</span>
+      </div>
+      <div class="app-header-rule"></div>
+      <div class="app-header-date" id="headerDate"></div>
+    </div>
 
     <div id="spinner"><div class="spin"></div> 데이터 로딩 중...</div>
     <div id="app" style="display:none">
@@ -818,6 +834,13 @@ function closeArticlePopup() {
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") closeArticlePopup();
 });
+
+document.getElementById('headerDate').textContent =
+  new Date().toLocaleDateString('ko-KR', {year:'numeric', month:'long', day:'numeric', weekday:'long'});
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/us-residential-v2/service-worker.js');
+}
 </script>
 </body>
 </html>
