@@ -31,54 +31,6 @@
       min-height: 100vh;
     }
 
-    /* ── Sidebar ── */
-    .sidebar {
-      width: 220px;
-      flex-shrink: 0;
-      padding: 20px 16px;
-      border-right: 1px solid #e0e0e0;
-      background: #fafafa;
-    }
-    .sidebar h2 { font-size: 15px; margin-bottom: 14px; color: #555; }
-    .sidebar label { display: block; font-size: 12px; color: #666; margin: 12px 0 4px; font-weight: 600; }
-    .sidebar select, .sidebar input[type="date"] {
-      width: 100%;
-      padding: 5px 7px;
-      font-size: 12px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      background: #fff;
-    }
-    .sidebar select[multiple] { height: 80px; }
-    .sidebar .checkbox-row {
-      display: flex; align-items: center; gap: 6px;
-      margin-top: 12px; font-size: 12px; color: #444;
-    }
-    .sidebar .divider { border: none; border-top: 1px solid #e0e0e0; margin: 14px 0; }
-
-    /* ── Mobile sidebar toggle ── */
-    .mobile-filter-toggle {
-      display: none;
-      width: 100%;
-      padding: 10px 14px;
-      background: #f5f5f5;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      font-size: 13px;
-      cursor: pointer;
-      margin-bottom: 12px;
-      text-align: left;
-    }
-    .mobile-sidebar {
-      display: none;
-      background: #fafafa;
-      border: 1px solid #e0e0e0;
-      border-radius: 6px;
-      padding: 14px;
-      margin-bottom: 16px;
-    }
-    .mobile-sidebar.open { display: block; }
-
     /* ── Main ── */
     .main {
       flex: 1;
@@ -204,8 +156,6 @@
     /* ── Responsive ── */
     @media (max-width: 768px) {
       .layout { flex-direction: column; }
-      .sidebar { display: none; }
-      .mobile-filter-toggle { display: block; }
       .main { padding: 12px 14px; }
       .app-header-brief { font-size: 36px; }
       .col-sector, .col-tags { display: none; }
@@ -301,48 +251,8 @@
 
 <div class="layout">
 
-  <!-- ── Desktop Sidebar ── -->
-  <aside class="sidebar" id="desktopSidebar">
-    <h2>🔍 필터</h2>
-    <label>카테고리</label>
-    <select id="d_category" multiple></select>
-    <label>섹터</label>
-    <select id="d_sector" multiple></select>
-    <hr class="divider" />
-    <label>From</label>
-    <input type="date" id="d_from" />
-    <label>To</label>
-    <input type="date" id="d_to" />
-    <hr class="divider" />
-    <div class="checkbox-row">
-      <input type="checkbox" id="d_hide_paywall" checked />
-      <label for="d_hide_paywall" style="margin:0">🔒 유료 기사 숨기기</label>
-    </div>
-  </aside>
-
   <!-- ── Main ── -->
   <main class="main">
-
-    <!-- Mobile filter toggle -->
-    <button class="mobile-filter-toggle" id="mobileToggle" onclick="toggleMobileFilter()">
-      🔍 필터 펼치기 ▾
-    </button>
-    <div class="mobile-sidebar" id="mobileSidebar">
-      <label>카테고리</label>
-      <select id="m_category" multiple></select>
-      <label>섹터</label>
-      <select id="m_sector" multiple></select>
-      <hr class="divider" />
-      <label>From</label>
-      <input type="date" id="m_from" />
-      <label>To</label>
-      <input type="date" id="m_to" />
-      <hr class="divider" />
-      <div class="checkbox-row">
-        <input type="checkbox" id="m_hide_paywall" checked />
-        <label for="m_hide_paywall" style="margin:0">🔒 유료 기사 숨기기</label>
-      </div>
-    </div>
 
     <div class="app-header">
       <div class="app-header-meta">우미글로벌 해외사업팀 | 미국 주거시장 인텔리전스</div>
@@ -432,8 +342,6 @@ const CSV_URL = "https://raw.githubusercontent.com/jaehongbr-Coding/us-residenti
 let allRows = [];
 
 /* ── Helpers ── */
-function isMobile() { return window.innerWidth <= 768; }
-
 function getLatestDateRange(rows) {
   const dates = rows
     .map(r => r.published_at ? r.published_at.slice(0, 10) : null)
@@ -446,16 +354,6 @@ function getLatestDateRange(rows) {
   latestDate.setDate(latestDate.getDate() - 1);
   const from = latestDate.toISOString().slice(0, 10);
   return { from, to: latest };
-}
-
-function getFilters() {
-  const p = isMobile() ? "m_" : "d_";
-  const cats    = [...document.getElementById(p + "category").selectedOptions].map(o => o.value);
-  const sectors = [...document.getElementById(p + "sector").selectedOptions].map(o => o.value);
-  const from    = document.getElementById(p + "from").value;
-  const to      = document.getElementById(p + "to").value;
-  const hideP   = document.getElementById(p + "hide_paywall").checked;
-  return { cats, sectors, from, to, hideP };
 }
 
 function fmtDate(str) {
@@ -527,25 +425,15 @@ function escHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-/* ── Filter logic ── */
-function applyBaseFilters(rows, { cats, sectors, from, to, hideP }) {
-  return rows.filter(r => {
-    if (hideP && String(r.access_limited).toLowerCase() === "true") return false;
-    if (cats.length && !cats.includes(r.category)) return false;
-    if (sectors.length && !sectors.includes(r.sector)) return false;
-    const d = parseDate(r.published_at);
-    if (from && d && d < new Date(from)) return false;
-    if (to   && d && d > new Date(to + "T23:59:59")) return false;
-    return true;
-  });
+/* ── Filter logic (유료 기사는 항상 숨김) ── */
+function applyBaseFilters(rows) {
+  return rows.filter(r => String(r.access_limited).toLowerCase() !== "true");
 }
 
 /* ── Render ── */
 function render() {
-  const f = getFilters();
-
-  // Base filtered (with date + category + sector + paywall)
-  const base = applyBaseFilters(allRows, f);
+  // Base filtered (유료 기사 숨김)
+  const base = applyBaseFilters(allRows);
 
   // 전체 기사 기준 최신 날짜 범위 (핵심 모니터링 + 전략 신호 공용)
   const { from: latestFrom, to: latestTo } = getLatestDateRange(allRows);
@@ -603,7 +491,7 @@ function render() {
 
   // 전략 신호 — 전체 기사 최신 날짜 기준 2일치 (latestFrom 공용)
   const signalBase = allRows.filter(r => {
-    if (f.hideP && r.access_limited === "True") return false;
+    if (r.access_limited === "True") return false;
     const d = r.published_at ? r.published_at.slice(0, 10) : null;
     if (!d || (latestFrom && d < latestFrom)) return false;
     return true;
@@ -641,7 +529,7 @@ function render() {
   document.querySelector("#tab-gp .tbl-wrap").innerHTML          = buildTable(gp, 500);
   document.querySelector("#tab-sh .tbl-wrap").innerHTML          = buildTable(sh, 500);
 
-  // 전체 기사 — 사이드바 필터 + 검색어 AND
+  // 전체 기사 — 유료 기사 숨김 + 검색어 AND
   const searchQ = (document.getElementById("searchInput").value || "").trim().toLowerCase();
   const baseFiltered = searchQ
     ? base.filter(r =>
@@ -654,65 +542,12 @@ function render() {
   document.getElementById("allTable").innerHTML = buildTable(baseFiltered, 600);
 }
 
-/* ── Populate filter dropdowns ── */
-function populateSelects(rows) {
-  const uniq = col => [...new Set(rows.map(r => r[col]).filter(Boolean))].sort();
-  ["d_category", "m_category"].forEach(id => {
-    const el = document.getElementById(id);
-    uniq("category").forEach(v => {
-      const o = document.createElement("option"); o.value = v; o.textContent = v; el.appendChild(o);
-    });
-  });
-  ["d_sector", "m_sector"].forEach(id => {
-    const el = document.getElementById(id);
-    uniq("sector").forEach(v => {
-      const o = document.createElement("option"); o.value = v; o.textContent = v; el.appendChild(o);
-    });
-  });
-}
-
-/* ── Default date range (30 days) ── */
-function setDefaultDates() {
-  const today    = new Date();
-  const monthAgo = new Date(today); monthAgo.setDate(today.getDate() - 30);
-  const fmt = d => d.toISOString().slice(0, 10);
-  ["d_from", "m_from"].forEach(id => document.getElementById(id).value = fmt(monthAgo));
-  ["d_to",   "m_to"  ].forEach(id => document.getElementById(id).value = fmt(today));
-}
-
 /* ── Tab switching ── */
 function switchTab(btn) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   btn.classList.add("active");
   document.getElementById(btn.dataset.tab).classList.add("active");
-}
-
-/* ── Mobile sidebar toggle ── */
-function toggleMobileFilter() {
-  const panel = document.getElementById("mobileSidebar");
-  const btn   = document.getElementById("mobileToggle");
-  const open  = panel.classList.toggle("open");
-  btn.textContent = open ? "🔍 필터 접기 ▴" : "🔍 필터 펼치기 ▾";
-}
-
-/* ── Sync desktop ↔ mobile filter values ── */
-function syncFilters(src) {
-  const pairs = [["d_from","m_from"],["d_to","m_to"],["d_hide_paywall","m_hide_paywall"]];
-  pairs.forEach(([d, m]) => {
-    const [de, me] = [document.getElementById(d), document.getElementById(m)];
-    if (src === "d") me.checked !== undefined ? (me.checked = de.checked) : (me.value = de.value);
-    else             de.checked !== undefined ? (de.checked = me.checked) : (de.value = me.value);
-  });
-}
-
-/* ── Bind filter events ── */
-function bindEvents() {
-  const dIds = ["d_category","d_sector","d_from","d_to","d_hide_paywall"];
-  const mIds = ["m_category","m_sector","m_from","m_to","m_hide_paywall"];
-  dIds.forEach(id => document.getElementById(id).addEventListener("change", () => { syncFilters("d"); render(); }));
-  mIds.forEach(id => document.getElementById(id).addEventListener("change", () => { syncFilters("m"); render(); }));
-  document.getElementById("searchInput").addEventListener("input", render);
 }
 
 /* ── Load CSV ── */
@@ -722,9 +557,7 @@ Papa.parse(CSV_URL, {
   skipEmptyLines: true,
   complete({ data }) {
     allRows = data;
-    setDefaultDates();
-    populateSelects(allRows);
-    bindEvents();
+    document.getElementById("searchInput").addEventListener("input", render);
     document.getElementById("spinner").style.display = "none";
     document.getElementById("app").style.display = "block";
     render();
