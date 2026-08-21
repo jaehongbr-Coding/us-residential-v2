@@ -80,11 +80,18 @@ woomi_relevance: CSV 저장만, UI 미노출
 - marked.js 로딩 실패 대비 fallback 처리 추가 (모바일 CDN 이슈 대응, onerror 핸들러 + typeof 체크)
 - loadReportList GitHub API 방식으로 변경 (raw.githubusercontent.com CORS 실패 수정, docx 존재 여부 즉시 판단)
 - 06-23 주간 리포트 수동 생성 (md+docx, requirements.txt 수정 전 누락분 보완)
+- 앱 리브랜딩: "US Residential Intelligence v2" → "The Brief — Woomi Global"
+- 신문 헤더 스타일 적용 (THE + Brief 타이포그래피, 날짜 표시)
+- PWA 변환 완료 (manifest.json, service-worker.js, 앱 아이콘 192/512px)
+- 홈 화면 앱 설치 가능 (Android 삼성 인터넷/크롬 확인)
+- 사이드바 필터 전면 제거 (카테고리/섹터/날짜/유료기사 체크박스)
+- 유료 기사 항상 숨김으로 하드코딩
+- 아이콘 컬러: #1B3A5C 네이비 배경 + 신문 텍스처 + THE/Brief 워드마크
 
 ## 다음 작업
-1. 06-29(월) GitHub Actions 자동 실행 확인 — md+docx 동시 생성 여부
-2. 모바일 환경 리포트 렌더링 정상 동작 확인 (marked.js fallback 검증)
-3. 국문 요약(korean_summary) 팝업 품질 확인
+1. 모바일 UI 추가 점검 (기사 팝업, 전략 신호 모니터 탭 터치 UX)
+2. README.md 업데이트 (The Brief 리브랜딩, 현재 스펙 반영)
+3. 경연 대회 준비: 앱 소개 슬라이드 제작
 4. 리포트 고도화: 월간 → 분기 → 반기 순차 확장
 5. Phase 3: 리포트 품질 고도화 (프롬프트 튜닝, 섹터별 심화 분석)
 
