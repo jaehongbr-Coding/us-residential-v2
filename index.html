@@ -15,7 +15,7 @@
           onerror="console.error('marked.js 로드 실패')"></script>
   <script>
     if (typeof Chart === 'undefined') {
-      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js" onerror="console.error(\'Chart.js 로드 실패\')"><\/script>');
+      document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" onerror="console.error(\'Chart.js 로드 실패\')"><\/script>');
     }
   </script>
   <style>
@@ -176,7 +176,7 @@
       padding: 14px 16px;
     }
     .trend-chart-title { font-size: 13px; font-weight: 600; color: #1B3A5C; margin-bottom: 10px; }
-    .trend-chart-canvas-wrap { position: relative; height: 250px; }
+    .trend-chart-canvas-wrap { position: relative; height: 200px; }
     .trend-footnote { font-size: 11px; color: #999; margin-top: 10px; text-align: right; }
 
     /* ── Report section ── */
@@ -682,7 +682,13 @@ Papa.parse(CSV_URL, {
 });
 
 // 트렌드 차트는 하드코딩 데이터라 articles.csv 로딩 성공 여부와 무관하게 항상 렌더링
-renderTrendCharts();
+window.addEventListener('load', function() {
+  if (typeof Chart !== 'undefined') {
+    renderTrendCharts();
+  } else {
+    console.error('Chart.js 로드 실패');
+  }
+});
 
 /* ── Report loader ── */
 const REPO_RAW   = "https://raw.githubusercontent.com/jaehongbr-Coding/us-residential-v2/main";
