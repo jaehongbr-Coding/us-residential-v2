@@ -327,30 +327,33 @@
         <div class="scroll-box"><div class="scroll-inner h-600 tbl-wrap" id="allTable"></div></div>
       </div>
 
-      <hr style="border:none;border-top:1px solid #eee;margin-bottom:24px" />
+    </div><!-- #app -->
 
-      <!-- 📈 시장 트렌드 분석 -->
-      <div class="section">
-        <div class="section-title">📈 시장 트렌드 분석</div>
-        <div class="trend-charts">
-          <div class="trend-chart-box">
-            <div class="trend-chart-title">월별 수집 기사 카테고리 분포</div>
-            <div class="trend-chart-canvas-wrap"><canvas id="trendCategoryChart"></canvas></div>
-          </div>
-          <div class="trend-chart-box">
-            <div class="trend-chart-title">핵심 모니터링 선별 비율 추이</div>
-            <div class="trend-chart-canvas-wrap"><canvas id="trendHighRatioChart"></canvas></div>
-          </div>
-          <div class="trend-chart-box">
-            <div class="trend-chart-title">주요 GP 언급 빈도 추이</div>
-            <div class="trend-chart-canvas-wrap"><canvas id="trendGpChart"></canvas></div>
-          </div>
+    <hr style="border:none;border-top:1px solid #eee;margin-bottom:24px" />
+
+    <!-- 📈 시장 트렌드 분석 (CSV 로딩 성공 여부와 무관하게 항상 표시 — 하드코딩 데이터) -->
+    <div class="section">
+      <div class="section-title">📈 시장 트렌드 분석</div>
+      <div class="trend-charts">
+        <div class="trend-chart-box">
+          <div class="trend-chart-title">월별 수집 기사 카테고리 분포</div>
+          <div class="trend-chart-canvas-wrap"><canvas id="trendCategoryChart"></canvas></div>
         </div>
-        <div class="trend-footnote">데이터 기준: 2026.03~08.18, 총 5,272건</div>
+        <div class="trend-chart-box">
+          <div class="trend-chart-title">핵심 모니터링 선별 비율 추이</div>
+          <div class="trend-chart-canvas-wrap"><canvas id="trendHighRatioChart"></canvas></div>
+        </div>
+        <div class="trend-chart-box">
+          <div class="trend-chart-title">주요 GP 언급 빈도 추이</div>
+          <div class="trend-chart-canvas-wrap"><canvas id="trendGpChart"></canvas></div>
+        </div>
       </div>
+      <div class="trend-footnote">데이터 기준: 2026.03~08.18, 총 5,272건</div>
+    </div>
 
-      <hr style="border:none;border-top:1px solid #eee;margin-bottom:24px" />
+    <hr style="border:none;border-top:1px solid #eee;margin-bottom:24px" />
 
+    <div id="app2" style="display:none">
       <!-- 📋 인텔리전스 리포트 -->
       <div class="section">
         <div class="section-title">📋 인텔리전스 리포트</div>
@@ -372,7 +375,7 @@
         </div>
       </div>
 
-    </div><!-- #app -->
+    </div><!-- #app2 -->
   </main>
 </div>
 
@@ -669,14 +672,17 @@ Papa.parse(CSV_URL, {
     document.getElementById("searchInput").addEventListener("input", render);
     document.getElementById("spinner").style.display = "none";
     document.getElementById("app").style.display = "block";
+    document.getElementById("app2").style.display = "block";
     render();
-    renderTrendCharts();
   },
   error(err) {
     document.getElementById("spinner").innerHTML =
       `<span style="color:#c00">데이터 로드 실패: ${err.message}</span>`;
   },
 });
+
+// 트렌드 차트는 하드코딩 데이터라 articles.csv 로딩 성공 여부와 무관하게 항상 렌더링
+renderTrendCharts();
 
 /* ── Report loader ── */
 const REPO_RAW   = "https://raw.githubusercontent.com/jaehongbr-Coding/us-residential-v2/main";
