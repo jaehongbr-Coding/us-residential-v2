@@ -263,7 +263,16 @@ def run_classifier() -> dict:
         print(f"[SKIP] 이미 in_progress 상태인 배치가 있어 새 배치를 제출하지 않습니다: {ids}")
         return {"success": 0, "failed": 0, "remaining": len(unclassified), "skipped": True}
 
-    article_map = {a["article_id"]: a for a in articles}
+    article_map = {}
+    for a in articles:
+        aid = a["article_id"]
+        if aid not in article_map:
+            article_map[aid] = a
+        else:
+            # 중복 article_id 발생 시 이미 분류된 것 우선 유지
+            existing = article_map[aid]
+            if a.get("classified", "").lower() == "true" and existing.get("classified", "").lower() != "true":
+                article_map[aid] = a
 
     batch_results = classify_batch(client, batch_articles)
 
