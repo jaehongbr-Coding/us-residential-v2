@@ -10,11 +10,11 @@ US Residential Intelligence v2
 - app.py: Streamlit Article Feed + Market Dashboard
 - articles.csv: 단일 output (삭제/스키마 변경 금지)
 
-## articles.csv 컬럼 (15개 확정)
+## articles.csv 컬럼 (16개 확정)
 article_id, collected_at, published_at, source, title,
 url, summary, classified, category, event_tags,
 signal_type, sector, woomi_relevance, claude_rationale,
-access_limited
+access_limited, korean_summary
 
 ## 분류 체계
 category (1개): 개발 / 시장 / GP·자본흐름
