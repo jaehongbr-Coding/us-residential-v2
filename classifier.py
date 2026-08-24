@@ -176,7 +176,11 @@ def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> d
             "params": {
                 "model": MODEL,
                 "max_tokens": 1500,
-                "system": SYSTEM_PROMPT,
+                "system": [{
+                    "type": "text",
+                    "text": SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                }],
                 "messages": [{"role": "user", "content": build_prompt(article)}],
             },
         }
@@ -198,17 +202,28 @@ def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> d
         os.remove(BATCH_ID_FILE)
 
     results: dict[str, dict] = {}
+    cache_hits = 0
+    cache_misses = 0
     for item in client.messages.batches.results(batch.id):
         aid = item.custom_id
         if item.result.type == "succeeded":
             raw = item.result.message.content[0].text
             results[aid] = parse_result(raw, aid)
+            usage = item.result.message.usage
+            if getattr(usage, "cache_read_input_tokens", 0):
+                cache_hits += 1
+            elif getattr(usage, "cache_creation_input_tokens", 0):
+                cache_misses += 1
         elif item.result.type == "errored":
             print(f"  [BATCH ERROR] {aid}: {item.result.error}")
             results[aid] = dict(EMPTY_RESULT)
         else:
             print(f"    [WARN] 배치 실패: {aid} ({item.result.type})")
             results[aid] = dict(EMPTY_RESULT)
+
+    cache_total = cache_hits + cache_misses
+    hit_rate = (cache_hits / cache_total * 100) if cache_total else 0.0
+    print(f"    [CACHE] 총 {len(results)}건 / hit(read) {cache_hits} / miss(write) {cache_misses} / 히트율 {hit_rate:.1f}%")
 
     return results
 
