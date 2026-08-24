@@ -62,6 +62,29 @@
       border-bottom: 2px solid #eee;
     }
 
+    /* ── Page tabs (뉴스 / 인텔리전스) ── */
+    .page-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #eee;
+    }
+    .page-tab-btn {
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      background: none;
+      cursor: pointer;
+      color: #888;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+    }
+    .page-tab-btn:hover { color: #1B3A5C; }
+    .page-tab-btn.active { color: #1B3A5C; border-bottom-color: #1B3A5C; }
+    .page-panel { display: none; }
+    .page-panel.active { display: block; }
+
     /* ── Tabs ── */
     .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; border-bottom: 1px solid #ddd; }
     .tab-btn {
@@ -165,6 +188,11 @@
       .app-header-brief { font-size: 36px; }
       .col-sector, .col-tags { display: none; }
       .col-rationale { width: 140px; }
+    }
+
+    /* 데스크톱: 기사 테이블 좌우에 스크롤 잡을 여백 확보 (모바일은 터치 스크롤이라 미적용) */
+    @media (min-width: 769px) {
+      #page-news .scroll-box { margin: 0 4%; }
     }
 
     /* ── Trend section ── */
@@ -300,6 +328,12 @@
       <div class="app-header-date" id="headerDate"></div>
     </div>
 
+    <div class="page-tabs">
+      <button class="page-tab-btn active" data-page="page-news" onclick="switchPage(this)">📰 뉴스</button>
+      <button class="page-tab-btn" data-page="page-intel" onclick="switchPage(this)">📊 인텔리전스</button>
+    </div>
+
+    <div id="page-news" class="page-panel active">
     <div id="spinner"><div class="spin"></div> 데이터 로딩 중...</div>
     <div id="app" style="display:none">
 
@@ -346,9 +380,9 @@
       </div>
 
     </div><!-- #app -->
+    </div><!-- #page-news -->
 
-    <hr style="border:none;border-top:1px solid #eee;margin-bottom:24px" />
-
+    <div id="page-intel" class="page-panel">
     <!-- 📈 시장 트렌드 분석 (CSV 로딩 성공 여부와 무관하게 항상 표시 — 하드코딩 데이터) -->
     <div class="section">
       <div class="section-title">📈 시장 트렌드 분석</div>
@@ -395,6 +429,7 @@
       </div>
 
     </div><!-- #app2 -->
+    </div><!-- #page-intel -->
   </main>
 </div>
 
@@ -681,6 +716,26 @@ function switchTab(btn) {
   document.getElementById(btn.dataset.tab).classList.add("active");
 }
 
+/* ── Page switching (📰 뉴스 / 📊 인텔리전스) ── */
+let intelLoaded = false;
+function switchPage(btn) {
+  document.querySelectorAll(".page-tab-btn").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".page-panel").forEach(p => p.classList.remove("active"));
+  btn.classList.add("active");
+  document.getElementById(btn.dataset.page).classList.add("active");
+
+  // 인텔리전스 탭은 처음 열 때만 트렌드 차트·리포트 목록을 지연 로딩
+  if (btn.dataset.page === "page-intel" && !intelLoaded) {
+    intelLoaded = true;
+    if (typeof Chart !== 'undefined') {
+      renderTrendCharts();
+    } else {
+      console.error('Chart.js 로드 실패');
+    }
+    loadReportList();
+  }
+}
+
 /* ── Archive stats (누적 지표 헤더) ── */
 const archiveState = { reportCount: null, earliestDate: null, articleCount: null };
 
@@ -728,14 +783,7 @@ Papa.parse(CSV_URL, {
   },
 });
 
-// 트렌드 차트는 하드코딩 데이터라 articles.csv 로딩 성공 여부와 무관하게 항상 렌더링
-window.addEventListener('load', function() {
-  if (typeof Chart !== 'undefined') {
-    renderTrendCharts();
-  } else {
-    console.error('Chart.js 로드 실패');
-  }
-});
+// 트렌드 차트·리포트 목록은 인텔리전스 탭을 처음 열 때 switchPage()에서 지연 로딩
 
 /* ── Report loader ── */
 const REPO_RAW   = "https://raw.githubusercontent.com/jaehongbr-Coding/us-residential-v2/main";
@@ -831,7 +879,7 @@ async function loadSelectedReport() {
 }
 
 document.getElementById("reportSelect").addEventListener("change", loadSelectedReport);
-loadReportList();
+// loadReportList()는 인텔리전스 탭을 처음 열 때 switchPage()에서 호출됨
 
 /* ── Article popup ── */
 function openArticlePopup(idx) {
