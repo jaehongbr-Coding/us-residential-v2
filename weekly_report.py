@@ -393,12 +393,15 @@ def save_report_docx(md_content: str, period: str) -> str:
 
     # ── 본문 파싱 ──────────────────────────────────────────────
     lines = md_content.splitlines()
-    in_frontmatter = False
-    frontmatter_count = 0
+    # YAML front-matter는 문서 맨 첫 줄이 "---"일 때만 존재 — 그렇지 않으면
+    # 본문 중간의 "---" 구분선(예: 섹션1 앞)을 front-matter로 오인해
+    # 그 사이 내용을 통째로 스킵하는 버그가 생긴다.
+    has_frontmatter = bool(lines) and lines[0].strip() == "---"
+    in_frontmatter = has_frontmatter
+    frontmatter_count = 1 if has_frontmatter else 0
 
     for line in lines:
-        # YAML front-matter 스킵
-        if line.strip() == "---":
+        if has_frontmatter and line.strip() == "---" and frontmatter_count < 2:
             frontmatter_count += 1
             in_frontmatter = frontmatter_count < 2
             continue
