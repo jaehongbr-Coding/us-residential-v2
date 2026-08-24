@@ -1,0 +1,52 @@
+name: Update Service Worker Cache Version
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "app.py"
+      - "manifest.json"
+      - "assets/icons/**"
+  workflow_dispatch:
+
+concurrency:
+  group: update-sw-version
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bump-cache-version:
+    runs-on: ubuntu-latest
+    # 무한 루프 방지: 이 워크플로 자신이 만든 커밋(author=github-actions[bot])에는 반응하지 않음.
+    # (구조적으로도 이 워크플로는 service-worker.js만 커밋하는데 그 파일은 위 paths에
+    #  없어서 재트리거되지 않지만, 안전장치로 한 번 더 막는다.)
+    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.author.name != 'github-actions[bot]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump CACHE_NAME to current commit hash
+        run: |
+          SHORT_SHA=$(git rev-parse --short=8 HEAD)
+          echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
+          sed -i "s/\(const CACHE_NAME = \"\)[^\"]*\(\";\)/\1the-brief-${SHORT_SHA}\2/" service-worker.js
+          grep "CACHE_NAME" service-worker.js
+
+      - name: Commit & push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add service-worker.js
+          if git diff --cached --quiet; then
+            echo "변경사항 없음(캐시 버전 동일). 커밋 스킵."
+          else
+            git commit -m "chore: Service Worker 캐시 버전 자동 갱신 (${SHORT_SHA})"
+            git pull --rebase origin main
+            git push
+          fi
