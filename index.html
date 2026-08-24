@@ -906,7 +906,21 @@ document.getElementById('headerDate').textContent =
   new Date().toLocaleDateString('ko-KR', {year:'numeric', month:'long', day:'numeric', weekday:'long'});
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/us-residential-v2/service-worker.js');
+  navigator.serviceWorker.register('/us-residential-v2/service-worker.js').then((reg) => {
+    // 브라우저 기본 업데이트 체크는 보통 24시간에 한 번만 실행되므로,
+    // 앱을 열 때마다 새 버전이 있는지 즉시 한 번 더 확인한다.
+    reg.update();
+  });
+
+  // skipWaiting()+clients.claim()으로 새 서비스워커가 제어권을 넘겨받아도
+  // 이미 열려있는 탭의 화면(HTML/JS)은 자동으로 갱신되지 않으므로,
+  // controllerchange(=업데이트 적용 시점)에 한 번만 새로고침한다.
+  let swRefreshed = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (swRefreshed) return; // 무한 새로고침 방지: 세션당 1회만
+    swRefreshed = true;
+    window.location.reload();
+  });
 }
 </script>
 </body>

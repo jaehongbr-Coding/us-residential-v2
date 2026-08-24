@@ -16,16 +16,20 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
+  // 캐시 정리와 clients.claim()을 하나의 waitUntil로 묶어야
+  // clients.claim()이 끝나기 전에 activate가 "완료"로 취급되는 걸 방지한다.
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
-      )
-    )
+    Promise.all([
+      caches.keys().then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key !== CACHE_NAME)
+            .map((key) => caches.delete(key))
+        )
+      ),
+      self.clients.claim(),
+    ])
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
