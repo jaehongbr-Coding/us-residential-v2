@@ -179,6 +179,24 @@
     .trend-chart-canvas-wrap { position: relative; height: 200px; }
     .trend-footnote { font-size: 11px; color: #999; margin-top: 10px; text-align: right; }
 
+    /* ── Report archive stats ── */
+    .archive-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      align-items: center;
+      background: #f2f6fa;
+      border: 1px solid #dce6ef;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 14px;
+      font-size: 12px;
+      color: #1B3A5C;
+    }
+    .archive-stats .stat-item { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+    .archive-stats .stat-num  { font-size: 15px; font-weight: 700; }
+    .archive-stats .stat-sep  { color: #b8c7d6; }
+
     /* ── Report section ── */
     #reportContent h2 { font-size: 16px; font-weight: 700; margin: 18px 0 6px; color: #222; }
     #reportContent h3 { font-size: 14px; font-weight: 600; margin: 14px 0 4px; color: #333; }
@@ -357,6 +375,7 @@
       <!-- 📋 인텔리전스 리포트 -->
       <div class="section">
         <div class="section-title">📋 인텔리전스 리포트</div>
+        <div id="archiveStats" class="archive-stats"></div>
         <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <select id="reportSelect" style="padding:6px 10px;font-size:13px;border:1px solid #ccc;border-radius:4px;min-width:240px">
             <option value="">-- 리포트 선택 --</option>
@@ -662,6 +681,27 @@ function switchTab(btn) {
   document.getElementById(btn.dataset.tab).classList.add("active");
 }
 
+/* ── Archive stats (누적 지표 헤더) ── */
+const archiveState = { reportCount: null, earliestDate: null, articleCount: null };
+
+function updateArchiveStats() {
+  const el = document.getElementById("archiveStats");
+  if (!el) return;
+  const parts = [];
+  if (archiveState.earliestDate) {
+    const days  = Math.floor((new Date() - new Date(archiveState.earliestDate)) / 86400000);
+    const weeks = Math.max(1, Math.floor(days / 7));
+    parts.push(`<span class="stat-item"><span class="stat-num">${weeks}</span>주 연속 수집</span>`);
+  }
+  if (archiveState.reportCount !== null) {
+    parts.push(`<span class="stat-item"><span class="stat-num">${archiveState.reportCount}</span>개 리포트 누적</span>`);
+  }
+  if (archiveState.articleCount !== null) {
+    parts.push(`<span class="stat-item"><span class="stat-num">${archiveState.articleCount.toLocaleString()}</span>건 누적 분석</span>`);
+  }
+  el.innerHTML = parts.join('<span class="stat-sep">·</span>');
+}
+
 /* ── Load CSV ── */
 Papa.parse(CSV_URL, {
   download: true,
@@ -669,6 +709,13 @@ Papa.parse(CSV_URL, {
   skipEmptyLines: true,
   complete({ data }) {
     allRows = data;
+    const collectedDates = data
+      .map(r => r.collected_at ? r.collected_at.slice(0, 10) : null)
+      .filter(Boolean)
+      .sort();
+    if (collectedDates.length) archiveState.earliestDate = collectedDates[0];
+    archiveState.articleCount = data.length;
+    updateArchiveStats();
     document.getElementById("searchInput").addEventListener("input", render);
     document.getElementById("spinner").style.display = "none";
     document.getElementById("app").style.display = "block";
@@ -706,17 +753,34 @@ async function loadReportList() {
     files.filter(f => f.name.endsWith(".docx")).forEach(f => docxFiles.add(f.name));
     const mds   = files.filter(f => f.name.endsWith(".md")).sort((a, b) => b.name.localeCompare(a.name));
     if (!mds.length) { status.textContent = "리포트 없음"; return; }
+
+    // 월별 그룹핑: 파일명 예: 20260610_weekly.md → 2026-06-10 주간, "2026년 6월" 그룹에 포함
+    const groups = new Map(); // "YYYY-MM" -> { label, items: [{name, text}] }
     mds.forEach(f => {
-      const opt = document.createElement("option");
-      opt.value = f.name;
-      // 파일명 예: 20260610_weekly.md → 2026-06-10 주간
       const m = f.name.match(/^(\d{4})(\d{2})(\d{2})_(.+)\.md$/);
-      opt.textContent = m
-        ? `${m[1]}-${m[2]}-${m[3]} ${PERIOD_KO[m[4]] || m[4]}`
-        : f.name;
-      sel.appendChild(opt);
+      const key   = m ? `${m[1]}-${m[2]}` : "기타";
+      const label = m ? `${m[1]}년 ${parseInt(m[2], 10)}월` : "기타";
+      if (!groups.has(key)) groups.set(key, { label, items: [] });
+      groups.get(key).items.push({
+        name: f.name,
+        text: m ? `${m[1]}-${m[2]}-${m[3]} ${PERIOD_KO[m[4]] || m[4]}` : f.name,
+      });
     });
+    groups.forEach(g => {
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = `${g.label} (${g.items.length}건)`;
+      g.items.forEach(item => {
+        const opt = document.createElement("option");
+        opt.value = item.name;
+        opt.textContent = item.text;
+        optgroup.appendChild(opt);
+      });
+      sel.appendChild(optgroup);
+    });
+
     status.textContent = `${mds.length}개 리포트`;
+    archiveState.reportCount = mds.length;
+    updateArchiveStats();
   } catch (e) {
     status.textContent = "목록 로드 실패";
   }
