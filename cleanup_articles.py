@@ -20,7 +20,7 @@ CSV_COLUMNS = [
     "article_id", "collected_at", "published_at", "source",
     "title", "url", "summary", "classified",
     "category", "event_tags", "signal_type", "sector",
-    "woomi_relevance", "claude_rationale", "access_limited",
+    "woomi_relevance", "claude_rationale", "access_limited", "korean_summary",
 ]
 
 
