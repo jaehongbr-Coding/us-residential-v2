@@ -190,8 +190,14 @@
       .col-rationale { width: 140px; }
     }
 
-    /* 데스크톱: 기사 테이블 좌우에 스크롤 잡을 여백 확보 (모바일은 터치 스크롤이라 미적용) */
+    /* 데스크톱: 기사 테이블 좌우에 스크롤 잡을 여백 확보 */
     @media (min-width: 769px) {
+      #page-news .scroll-box { margin: 0 4%; }
+    }
+
+    /* 모바일: 리스트 박스가 화면을 꽉 채우면 세로 스와이프가 리스트 내부 스크롤에 먹혀
+       페이지 전체 스크롤이 잘 안 되는 문제 — 데스크톱과 별개 미디어쿼리로 값 독립 조정 가능 */
+    @media (max-width: 768px) {
       #page-news .scroll-box { margin: 0 4%; }
     }
 
