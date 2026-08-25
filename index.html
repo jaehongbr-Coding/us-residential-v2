@@ -895,7 +895,7 @@ function openArticlePopup(idx) {
   document.getElementById("popMeta").textContent    =
     `${r.published_at ? r.published_at.slice(0, 10) : ""}  |  ${r.sector || ""}  |  ${r.event_tags || ""}`;
   document.getElementById("popSummary").textContent =
-    r.korean_summary || r.claude_rationale || "(요약 없음)";
+    r.korean_summary || r.claude_rationale || r.summary || "(요약 없음)";
   document.getElementById("popOriginalLink").href   = r.url || "#";
   document.getElementById("articleOverlay").classList.add("open");
 }
