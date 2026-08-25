@@ -71,6 +71,9 @@ US Residential Intelligence v2
 모든 지역·모든 주제에서 나타나는 착시가 생긴다.**
 통계 산출 시 published_at >= 2026-06-01 하한을 반드시 적용할 것.
 
+semi-annual(180일) 리포트는 이 구간을 포함하므로, 기사 건수의 시계열 변화를
+시장 신호로 해석하지 않도록 프롬프트에 주의 문구를 넣을 것.
+
 ### 소스별 woomi_relevance=높음 산출률 (균질구간)
 
 | 소스 | 기사 수 | 높음 | 산출률 |
@@ -99,7 +102,9 @@ korean_summary만 채우는 것이 구조적으로 불가능하고 기존 분류
 결측분의 46%는 2026-06-01 이전 발행이라 기저선에서도 제외되며,
 woomi_relevance=높음이면서 6/1 이후 발행인 것은 79건뿐이다.
 
-대응: 표시 계층에서 korean_summary가 비면 summary(영문)로 대체한다.
+weekly_report.py는 korean_summary를 참조하지 않고 영문 summary를 Claude에 넘겨
+새로 요약하므로 리포트에는 영향이 없다. 대응은 index.html 표시 계층에서
+korean_summary가 비면 summary(영문)로 대체하는 것으로 충분하다.
 
 ### access_limited 필드의 실제 의미
 
@@ -144,6 +149,7 @@ woomi_relevance: CSV 저장만, UI 미노출
 - classifier.py의 SYSTEM_PROMPT와 CSV_COLUMNS는 수정 전 반드시 영향 범위를 검토할 것
   (CSV_COLUMNS는 csv.DictWriter의 fieldnames로 쓰이며 extrasaction 기본값이 raise라,
    articles.csv에 컬럼이 추가되면 ValueError로 파이프라인 전체가 중단된다)
+- 모델 상수는 classifier.py와 weekly_report.py 두 곳에 있다. 업그레이드 시 양쪽 모두 확인할 것
 
 ## 개발 이력 (~2026.08)
 - 220건 수집·분류 완료
@@ -206,20 +212,25 @@ woomi_relevance: CSV 저장만, UI 미노출
 
 ## 다음 작업
 
-### 선행 이슈 정리 (issues-plan.md) — geo 착수 전
+### 선행 이슈 정리 (geo 착수 전)
 1. weekly_report.yml과 daily_collect.yml 동시 발화 해소 (일요일 21:00 UTC 충돌)
 2. requirements.txt에 pyyaml, openpyxl 추가
 3. category 오염 1건 수정 (article_id 8270efb18db5)
-4. 제목 중복 167행 정리 (86행 제거) + collector.py 중복 방지 로직
-5. korean_summary fallback (index.html, weekly_report.py)
-6. _FETCH_SOURCES 확대 (Multifamily Dive 등 5개 추가)
+4. 제목 중복 167행 정리(86행 제거) + collector.py 중복 방지 로직
+5. index.html korean_summary fallback 한 줄
+6. collector.py _FETCH_SOURCES 확대 (Multifamily Dive 등 5개)
+7. weekly_report.py 모델 claude-sonnet-4-5 → claude-sonnet-4-6
 
-### geo 태깅 (research.md / Plan.md)
-7. CBSA 크로스워크 구축 + geo_tags.csv 신설 (articles.csv 스키마 불변)
-8. IC Helper 연동 — 딜 지역 공급 파이프라인 조회
+### 보류 (조건부)
+- weekly_report.py format_articles의 summary[:200] 확대 → 위 6번 완료 후 결정
+- semi-annual 리포트 프롬프트에 백필 구간 주의 문구 → 반기 리포트 생성 시
+
+### geo 태깅
+- CBSA 크로스워크 구축 + geo_tags.csv 신설 (articles.csv 스키마 불변)
+- IC Helper 연동 — 딜 지역 공급 파이프라인 조회
 
 ### 공모전
-9. 2026 AI Innovation Challenge B Track 제출 (10월 초 목표)
+- 2026 AI Innovation Challenge B Track 제출 (10월 초 목표)
 
 ## Phase 2: 인텔리전스 리포트 (기존 가설검증 화면 대체)
 - 방향: 수집 기사 기반 주간/월간/분기/반기 원페이저 자동 생성
