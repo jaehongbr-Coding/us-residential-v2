@@ -7,6 +7,7 @@ US Residential Intelligence v2 — collector.py
 import csv
 import hashlib
 import os
+import re
 import sys
 import time
 import urllib.parse
@@ -417,12 +418,24 @@ def make_article_id(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()[:12]
 
 
-def load_existing_ids() -> set:
+def _norm_title(t: str) -> str:
+    t = re.sub(r"[^a-z0-9 ]", "", (t or "").lower())
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def load_existing_keys() -> tuple[set, set]:
+    """(article_id 집합, (정규화제목, 발행일 앞 10자) 집합) 반환.
+    Google News RSS가 같은 기사를 다른 추적 URL로 반환해
+    article_id(sha256(url)[:12])만으로는 중복이 잡히지 않는 사례 대응."""
     if not os.path.exists(ARTICLES_CSV):
-        return set()
+        return set(), set()
     with open(ARTICLES_CSV, encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
-        return {row["article_id"] for row in reader}
+        ids, title_keys = set(), set()
+        for row in reader:
+            ids.add(row["article_id"])
+            title_keys.add((_norm_title(row["title"]), row["published_at"][:10]))
+        return ids, title_keys
 
 
 # ------------------------------------------------------------------
@@ -446,7 +459,7 @@ def main():
     print(f"=== US Residential Intelligence v2 — Collector ===")
     print(f"시작: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-    existing_ids = load_existing_ids()
+    existing_ids, existing_title_keys = load_existing_keys()
     print(f"기존 누적 기사: {len(existing_ids)}건\n")
 
     total_fetched = 0
@@ -467,10 +480,12 @@ def main():
         total_fetched += len(fetched)
 
         for article in fetched:
-            if article["article_id"] in existing_ids:
+            title_key = (_norm_title(article["title"]), article["published_at"][:10])
+            if article["article_id"] in existing_ids or title_key in existing_title_keys:
                 total_skipped += 1
             else:
                 existing_ids.add(article["article_id"])
+                existing_title_keys.add(title_key)
                 new_articles.append(article)
                 sh_new += 1
 
@@ -492,10 +507,12 @@ def main():
         total_fetched += len(fetched)
 
         for article in fetched:
-            if article["article_id"] in existing_ids:
+            title_key = (_norm_title(article["title"]), article["published_at"][:10])
+            if article["article_id"] in existing_ids or title_key in existing_title_keys:
                 total_skipped += 1
             else:
                 existing_ids.add(article["article_id"])
+                existing_title_keys.add(title_key)
                 new_articles.append(article)
 
     if new_articles:
