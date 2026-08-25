@@ -382,10 +382,21 @@ _FREE_SOURCES = {
     "Federal Reserve", "NMHC", "Urban Land Institute",
     "Eye on Housing (NAHB)", "Yardi Matrix Blog",
 }
-_FETCH_SOURCES = {"LA Urbanize", "Bisnow", "The Real Deal"}
+_FETCH_SOURCES = {
+    "LA Urbanize", "Bisnow", "The Real Deal",
+    # 2026-08 추가 — 무료 매체인데 RSS 요약이 짧아 access_limited 오판정되던 소스
+    "Multifamily Dive", "Multifamily Executive", "Multi-Housing News",
+    "Connect CRE Texas", "HousingWire",
+}
 
 
 def _judge_access_limited(source: str, url: str, summary: str) -> bool:
+    """⚠️ 필드명은 access_limited이지만 실제로 판정하는 것은
+    '본문/요약을 충분히 확보하지 못했는가'이다.
+    유료 기사뿐 아니라 RSS 요약이 짧게 오는 무료 기사도 True가 된다
+    (Google News RSS 계열이 특히 그렇다).
+    index.html은 이 값이 True인 기사를 항상 숨긴다 —
+    제목만 남아 정보 가치가 없기 때문이며, 이는 의도된 동작이다."""
     if source in _FREE_SOURCES:
         return False
     if source in _FETCH_SOURCES:
