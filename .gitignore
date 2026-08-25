@@ -11,6 +11,9 @@ __pycache__/
 # classifier.py 배치 상태 (실행 중에만 존재하는 임시 파일)
 current_batch_id.txt
 
+# articles.csv 직접 수정 스크립트 실행 전 백업
+*.bak
+
 # Streamlit
 .streamlit/secrets.toml
 
