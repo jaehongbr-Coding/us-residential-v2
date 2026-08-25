@@ -63,10 +63,11 @@ RSS_FEEDS = [
     {"source": "Connect CRE South FL",    "url": "https://www.connectcre.com/feed?story-market=south-florida",  "sector": "Multifamily"},
     {"source": "Connect CRE Phoenix",     "url": "https://www.connectcre.com/feed?story-market=phoenix",        "sector": "Multifamily"},
     {"source": "Connect CRE Atlanta",     "url": "https://www.connectcre.com/feed?story-market=atlanta",        "sector": "Multifamily"},
-    {"source": "Connect CRE Charlotte",   "url": "https://www.connectcre.com/feed?story-market=charlotte",      "sector": "Multifamily"},
-    {"source": "Connect CRE Seattle",    "url": "https://www.connectcre.com/region/seattle/feed",               "sector": "Multifamily"},
-    {"source": "Connect CRE Denver",     "url": "https://www.connectcre.com/region/denver/feed",                "sector": "Multifamily"},
-    {"source": "Connect CRE California", "url": "https://www.connectcre.com/region/california/feed",            "sector": "Multifamily"},
+    # Connect CRE Charlotte 제거 (2026-08-25): charlotte/north-carolina 슬러그 모두 404.
+    #   Connect CRE에 해당 시장 구분 없음. 재추가 시 유효 슬러그부터 확인할 것.
+    {"source": "Connect CRE Seattle",    "url": "https://www.connectcre.com/feed?story-market=seattle",         "sector": "Multifamily"},
+    {"source": "Connect CRE Denver",     "url": "https://www.connectcre.com/feed?story-market=denver",          "sector": "Multifamily"},
+    {"source": "Connect CRE California", "url": "https://www.connectcre.com/feed?story-market=california",      "sector": "Multifamily"},
     {"source": "Yardi Matrix Blog",      "url": "https://www.yardimatrix.com/blog/feed",                        "sector": "Multifamily"},
     {"source": "LA Urbanize",             "url": "https://la.urbanize.city/rss.xml",                            "sector": "Residential"},
     {"source": "California YIMBY",        "url": "https://californiayimby.com/feed",                            "sector": "Policy"},
