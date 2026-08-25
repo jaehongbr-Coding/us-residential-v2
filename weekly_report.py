@@ -30,7 +30,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 ARTICLES_CSV = "articles.csv"
 REPORTS_DIR  = "reports"
-MODEL        = "claude-sonnet-4-5"
+MODEL        = "claude-sonnet-4-6"
 MAX_TOKENS   = 4000
 
 PERIOD_DAYS = {
