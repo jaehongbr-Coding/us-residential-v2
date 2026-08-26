@@ -352,6 +352,14 @@ def fetch_feed(source: str, url: str, sector: str) -> list[dict]:
         print(f"  [SKIP] {source} — feedparser 오류: {e}")
         return []
 
+    status = getattr(feed, "status", None)
+    if len(feed.entries) == 0:
+        print(f"  [WARN] {source} — entries=0 (status={status}, "
+              f"bozo={getattr(feed, 'bozo', None)}, "
+              f"exc={type(getattr(feed, 'bozo_exception', None)).__name__})")
+    if status is not None and status not in (200, 301, 302):
+        print(f"  [WARN] {source} — 비정상 status={status}")
+
     cutoff = datetime.now() - timedelta(days=90)  # 90일 이내 기사만 수집
     articles = []
     for entry in feed.entries:
@@ -420,7 +428,8 @@ def _judge_access_limited(source: str, url: str, summary: str) -> bool:
             resp = requests.get(url, headers=REQUEST_HEADERS, timeout=5)
             text = BeautifulSoup(resp.text, "html.parser").get_text(separator=" ")
             return len(text.strip()) < 300
-        except Exception:
+        except Exception as e:
+            print(f"  [FETCH FAIL] {source}: {type(e).__name__}: {e}")
             return len(summary) < 100  # fallback
     return len(summary) < 100
 
