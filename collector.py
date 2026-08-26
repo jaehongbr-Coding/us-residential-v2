@@ -43,21 +43,33 @@ RSS_FEEDS = [
     # 코어 — Multifamily
     {"source": "Multifamily Dive",       "url": "https://www.multifamilydive.com/feeds/news/",           "sector": "Multifamily"},
     {"source": "Multifamily Executive",  "url": "https://www.multifamilyexecutive.com/rss.xml",           "sector": "Multifamily"},
-    {"source": "Multi-Housing News",     "url": "https://www.multihousingnews.com/feed/",                 "sector": "Multifamily"},
+    # 2026-08-25 진단: IP/도메인 차단 확정. UA 무관 403 (봇 UA·브라우저 UA 동일 결과).
+    #   복구 불가. 대체 경로 검토 대상. '높음' 산출률 32%로 최상위 소스였음(균질구간 기준).
+    # {"source": "Multi-Housing News",     "url": "https://www.multihousingnews.com/feed/",                 "sector": "Multifamily"},
     {"source": "YieldPro",               "url": "https://yieldpro.com/feed/",                             "sector": "Multifamily"},
-    {"source": "GlobeSt",                "url": "https://www.globest.com/feed/",                          "sector": "CRE"},
+    # 2026-08-25 진단: IP/도메인 차단 확정. UA 무관 403 (봇 UA·브라우저 UA 동일 결과).
+    #   복구 불가. 대체 경로 검토 대상.
+    # {"source": "GlobeSt",                "url": "https://www.globest.com/feed/",                          "sector": "CRE"},
     {"source": "Bisnow",                 "url": "https://www.bisnow.com/rss",                             "sector": "CRE"},
     {"source": "Commercial Observer",    "url": "https://commercialobserver.com/feed/",                   "sector": "CRE"},
     {"source": "Connect CRE",            "url": "https://www.connectcre.com/feed/",                       "sector": "CRE"},
-    {"source": "The Real Deal",          "url": "https://therealdeal.com/feed/",                          "sector": "CRE"},
+    # 2026-08-25 진단: status 202 — 봇 챌린지 페이지로 추정. 엔드포인트가 RSS를 반환하지 않음.
+    #   URL 재조사 필요.
+    # {"source": "The Real Deal",          "url": "https://therealdeal.com/feed/",                          "sector": "CRE"},
     {"source": "Eye on Housing (NAHB)",  "url": "https://eyeonhousing.org/category/multifamily/feed/",    "sector": "Multifamily"},
     # 협회·정책
-    {"source": "NMHC",                   "url": "https://www.nmhc.org/news/rss/",                         "sector": "Policy"},
-    {"source": "Urban Land Institute",   "url": "https://urbanland.uli.org/feed/",                        "sector": "Policy"},
+    # 2026-08-25 진단: status 200이나 XML 아님 — HTML 페이지 반환. 엔드포인트가 RSS를 반환하지 않음.
+    #   URL 재조사 필요.
+    # {"source": "NMHC",                   "url": "https://www.nmhc.org/news/rss/",                         "sector": "Policy"},
+    # 2026-08-25 진단: IP/도메인 차단 확정. UA 무관 403 (봇 UA·브라우저 UA 동일 결과).
+    #   복구 불가. 대체 경로 검토 대상.
+    # {"source": "Urban Land Institute",   "url": "https://urbanland.uli.org/feed/",                        "sector": "Policy"},
     {"source": "Federal Reserve",        "url": "https://www.federalreserve.gov/feeds/press_all.xml",     "sector": "Macro"},
     # 자본·금융
-    {"source": "Walker & Dunlop",        "url": "https://www.walkerdunlop.com/insights/feed/",            "sector": "Capital"},
-    {"source": "Berkadia",               "url": "https://berkadia.com/feed/",                             "sector": "Capital"},
+    # 2026-08-25 진단: 301 리다이렉트 후 HTML. 엔드포인트가 RSS를 반환하지 않음. URL 재조사 필요.
+    # {"source": "Walker & Dunlop",        "url": "https://www.walkerdunlop.com/insights/feed/",            "sector": "Capital"},
+    # 2026-08-25 진단: BOT UA 403 / BROWSER UA 301 — 어느 쪽도 RSS 아님. URL 재조사 필요.
+    # {"source": "Berkadia",               "url": "https://berkadia.com/feed/",                             "sector": "Capital"},
     # 지역 — Sun Belt + West Coast
     {"source": "Connect CRE Texas",       "url": "https://www.connectcre.com/feed?story-market=texas",          "sector": "Multifamily"},
     {"source": "Connect CRE South FL",    "url": "https://www.connectcre.com/feed?story-market=south-florida",  "sector": "Multifamily"},
@@ -70,7 +82,9 @@ RSS_FEEDS = [
     {"source": "Connect CRE California", "url": "https://www.connectcre.com/feed?story-market=california",      "sector": "Multifamily"},
     {"source": "Yardi Matrix Blog",      "url": "https://www.yardimatrix.com/blog/feed",                        "sector": "Multifamily"},
     {"source": "LA Urbanize",             "url": "https://la.urbanize.city/rss.xml",                            "sector": "Residential"},
-    {"source": "California YIMBY",        "url": "https://californiayimby.com/feed",                            "sector": "Policy"},
+    # 2026-08-25 진단: URLError — DNS 또는 SSL 실패. 엔드포인트가 RSS를 반환하지 않음.
+    #   URL 재조사 필요.
+    # {"source": "California YIMBY",        "url": "https://californiayimby.com/feed",                            "sector": "Policy"},
     {"source": "SF YIMBY",                "url": "https://sfyimby.com/feed",                                    "sector": "Policy"},
 ]
 
@@ -388,7 +402,7 @@ _FETCH_SOURCES = {
     "LA Urbanize", "Bisnow", "The Real Deal",
     # 2026-08 추가 — 무료 매체인데 RSS 요약이 짧아 access_limited 오판정되던 소스
     "Multifamily Dive", "Multifamily Executive", "Multi-Housing News",
-    "Connect CRE Texas", "HousingWire",
+    "Connect CRE Texas",
 }
 
 
