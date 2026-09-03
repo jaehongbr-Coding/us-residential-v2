@@ -119,6 +119,33 @@ index.html이 이 값을 항상 숨기는 것은 **의도된 동작**이다.
 해당 기사는 summary 평균 97자, korean_summary 보유율 23%로 제목만 남아
 정보 가치가 없기 때문이다.
 
+### 수집 구조 정정 (2026.09 확인)
+
+**"기사 보관기간 90일"은 삭제 주기가 아니라 수집 창(intake window)이다.**
+collector.py 296행/363행(대학·RSS)과 fetch_industry_player_feed 내 동일 cutoff가
+`datetime.now() - timedelta(days=90)`로 "발행 후 90일 지난 기사는 수집 자체를 하지
+않는다"는 뜻이며, 이미 저장된 기사를 지우는 로직이 아니다. **published_at 기준
+삭제 로직은 코드 어디에도 없다 — 수집된 기사는 영구 보존된다.**
+
+2026-09 진단(대학 3곳 Google News RSS 비교) 결과, Google News는 현재 쿼리로도
+2006~2013년까지 기사를 반환한다. 즉 90일 컷오프는 Google 측 한계가 아니라
+collector.py가 사후 폐기하는 값이며, 늘릴 여지가 있다는 뜻이다. 다만 관측창
+불균질(위 "관측창 불균질" 절 참조)과 분류 API 비용 문제가 있어 값은 유지 중.
+
+**fetch_student_housing_feed의 `[:5]` 상한은 구조적 수집 상한이다.**
+같은 진단에서 대학당 실제 반환량은 76~100건이었으나 코드는 앞 5건만 취한다.
+Google News 정렬은 관련도순이라 발행일 최신순이 보장되지 않으므로, 상한 5건이
+최신 기사를 놓칠 수 있다. 기업명 피드(fetch_industry_player_feed)는 이 문제를
+반영해 상한을 [:12]로 넓혔다.
+
+**수집 축이 대학(175) + 기업(38) 2원 구조로 확대되었다.**
+BLUE_VISTA_UNIVERSITIES(대학 로컬 뉴스)만으로는 스폰서·운영사·기관자본 기업명
+기반 뉴스플로우를 구조적으로 놓친다는 문제(Blue Vista·PeakMade·Ascentris SH
+섹터 0건 확인)로 INDUSTRY_PLAYERS 38개사(Tier1 딜 직접 관계자 4 / Tier2 SH
+전업 개발사·운영사 18 / Tier3 기관자본 10 / Tier4 중개·자문 6)를 추가했다.
+초회 실행 기준 Player 소스 신규 64건, 그중 Tier1 4개사는 0건 — 쿼리 튜닝은
+결과를 보고 별도 결정.
+
 ## articles.csv 컬럼 (16개 확정)
 article_id, collected_at, published_at, source, title,
 url, summary, classified, category, event_tags,
