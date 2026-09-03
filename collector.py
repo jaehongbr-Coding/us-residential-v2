@@ -266,6 +266,54 @@ BLUE_VISTA_UNIVERSITIES = [
     {"name": "Cleveland State University",                                 "city": "Cleveland",        "state": "OH", "bv_rank": 175},
 ]
 
+INDUSTRY_PLAYERS = [
+    # Tier 1 — 진행 중인 Mizzou PBSH 딜 직접 관계자 (쿼리를 SH로 한정하지 않고 넓게 잡는다)
+    {"name": "Blue Vista Capital Management", "query": '"Blue Vista" real estate',          "tier": 1},
+    {"name": "PeakMade Real Estate",          "query": '"PeakMade" student housing',        "tier": 1},
+    {"name": "Ascentris",                     "query": '"Ascentris" real estate',           "tier": 1},
+    {"name": "The Dinerstein Companies",      "query": '"Dinerstein" student housing',      "tier": 1},
+
+    # Tier 2 — SH 전업 개발사·운영사
+    {"name": "The Scion Group",               "query": '"The Scion Group" student housing', "tier": 2},
+    {"name": "Landmark Properties",           "query": '"Landmark Properties" student housing', "tier": 2},
+    {"name": "Core Spaces",                   "query": '"Core Spaces" student housing',     "tier": 2},
+    {"name": "Cardinal Group",                "query": '"Cardinal Group" student housing',  "tier": 2},
+    {"name": "Campus Advantage",              "query": '"Campus Advantage" student housing', "tier": 2},
+    {"name": "The Preiss Company",            "query": '"The Preiss Company" student housing', "tier": 2},
+    {"name": "Coastal Ridge Real Estate",     "query": '"Coastal Ridge Real Estate" student housing', "tier": 2},
+    {"name": "Student Quarters",              "query": '"Student Quarters" student housing', "tier": 2},
+    {"name": "Article Student Living",        "query": '"Article Student Living" student housing', "tier": 2},
+    {"name": "Campus Apartments",             "query": '"Campus Apartments" student housing', "tier": 2},
+    {"name": "CA Ventures",                   "query": '"CA Ventures" student housing',     "tier": 2},
+    {"name": "Asset Living",                  "query": '"Asset Living" student housing',    "tier": 2},
+    {"name": "Subtext",                       "query": '"Subtext" student housing',         "tier": 2},
+    {"name": "LV Collective",                 "query": '"LV Collective" student housing',   "tier": 2},
+    {"name": "Up Campus",                     "query": '"Up Campus" student housing',       "tier": 2},
+    {"name": "Fountain Residential Partners", "query": '"Fountain Residential Partners" student housing', "tier": 2},
+    {"name": "Servitas",                      "query": '"Servitas" student housing',        "tier": 2},
+    {"name": "Greystar",                      "query": '"Greystar" student housing',        "tier": 2},
+
+    # Tier 3 — SH에 자본을 집행하는 기관
+    {"name": "Harrison Street",               "query": '"Harrison Street" student housing', "tier": 3},
+    {"name": "Hawkins Way Capital",           "query": '"Hawkins Way Capital" student housing', "tier": 3},
+    {"name": "Affinius Capital",              "query": '"Affinius Capital" student housing', "tier": 3},
+    {"name": "PCCP",                          "query": '"PCCP" student housing',            "tier": 3},
+    {"name": "QuadReal",                      "query": '"QuadReal" student housing',        "tier": 3},
+    {"name": "Nuveen",                        "query": '"Nuveen" student housing',          "tier": 3},
+    {"name": "Ares Management",               "query": '"Ares Management" student housing', "tier": 3},
+    {"name": "Kayne Anderson Real Estate",    "query": '"Kayne Anderson Real Estate" student housing', "tier": 3},
+    {"name": "Blackstone",                    "query": '"Blackstone" student housing',      "tier": 3},
+    {"name": "Brookfield",                    "query": '"Brookfield" student housing',      "tier": 3},
+
+    # Tier 4 — 중개·자문 (거래 파이프라인 조기 신호원)
+    {"name": "TSB Capital Advisors",          "query": '"TSB Capital Advisors" student housing', "tier": 4},
+    {"name": "Walker & Dunlop",               "query": '"Walker & Dunlop" student housing', "tier": 4},
+    {"name": "Berkadia",                      "query": '"Berkadia" student housing',        "tier": 4},
+    {"name": "JLL",                           "query": '"JLL" student housing',             "tier": 4},
+    {"name": "Newmark",                       "query": '"Newmark" student housing',         "tier": 4},
+    {"name": "Institutional Property Advisors", "query": '"Institutional Property Advisors" student housing', "tier": 4},
+]
+
 REQUEST_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; WoomiGlobalResearchBot/2.0)"
 }
@@ -326,6 +374,57 @@ def fetch_student_housing_feed(university: dict) -> list[dict]:
             "access_limited":   False,  # Google News RSS: title이 실질 콘텐츠
         })
     return articles
+
+def _make_google_news_query_url(query: str) -> str:
+    """임의 쿼리 문자열로 Google News RSS URL 생성."""
+    return f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=en-US&gl=US&ceid=US:en"
+
+
+def fetch_industry_player_feed(player: dict) -> list[dict]:
+    """기업명 기반 Google News RSS 수집. sector = 'Student Housing' 고정(초기값,
+    classifier.py가 이후 덮어쓴다)."""
+    name = player["name"]
+    url = _make_google_news_query_url(player["query"])
+    source_label = f"Player — {name}"
+    try:
+        feed = feedparser.parse(url, request_headers=REQUEST_HEADERS)
+    except Exception as e:
+        print(f"    [SKIP] {name} — feedparser 오류: {e}")
+        return []
+    cutoff = datetime.now() - timedelta(days=90)  # 90일 이내 기사만 수집
+    articles = []
+    for entry in feed.entries[:12]:
+        title = _clean_html(entry.get("title", "")).strip()
+        link = (entry.get("link") or "").strip()
+        if not title or not link:
+            continue
+        published_str = _parse_published(entry)
+        if datetime.strptime(published_str, "%Y-%m-%d %H:%M:%S") < cutoff:
+            continue
+        raw_summary = (
+            entry.get("summary")
+            or (entry.get("content", [{}])[0].get("value", ""))
+        )
+        summary = _clean_html(raw_summary)[:400]
+        articles.append({
+            "article_id":       make_article_id(link),
+            "collected_at":     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "published_at":     published_str,
+            "source":           source_label,
+            "title":            title,
+            "url":              link,
+            "summary":          summary,
+            "classified":       False,
+            "category":         "",
+            "event_tags":       "",
+            "signal_type":      "",
+            "sector":           "Student Housing",
+            "woomi_relevance":  "",
+            "claude_rationale": "",
+            "access_limited":   False,  # Google News RSS: title이 실질 콘텐츠
+        })
+    return articles
+
 
 def _clean_html(raw: str) -> str:
     return BeautifulSoup(unescape(raw or ""), "html.parser").get_text(separator=" ").strip()
@@ -518,6 +617,33 @@ def main():
     print(f"\n  → Student Housing 수집: {sh_fetched}건 / 신규: {sh_new}건\n")
 
     # ------------------------------------------------------------------
+    # STEP 1.5: 기업명 기반 Google News RSS (스폰서·운영사·기관자본)
+    # ------------------------------------------------------------------
+    print(f"[STEP 1.5] Player 수집 ({len(INDUSTRY_PLAYERS)}개사)")
+    player_fetched = 0
+    player_new     = 0
+
+    for i, player in enumerate(INDUSTRY_PLAYERS, start=1):
+        print(f"  [{i}/{len(INDUSTRY_PLAYERS)}] T{player['tier']} {player['name']}")
+        fetched = fetch_industry_player_feed(player)
+        player_fetched += len(fetched)
+        total_fetched += len(fetched)
+
+        for article in fetched:
+            title_key = (_norm_title(article["title"]), article["published_at"][:10])
+            if article["article_id"] in existing_ids or title_key in existing_title_keys:
+                total_skipped += 1
+            else:
+                existing_ids.add(article["article_id"])
+                existing_title_keys.add(title_key)
+                new_articles.append(article)
+                player_new += 1
+
+        time.sleep(0.5)
+
+    print(f"\n  → Player 수집: {player_fetched}건 / 신규: {player_new}건\n")
+
+    # ------------------------------------------------------------------
     # STEP 2: 기존 RSS 피드
     # ------------------------------------------------------------------
     print(f"[STEP 2] RSS 피드 수집 ({len(RSS_FEEDS)}개 소스)")
@@ -545,7 +671,7 @@ def main():
     print(f"\n--- 수집 완료 ---")
     print(f"  전체 수집: {total_fetched}건")
     print(f"  중복 skip: {total_skipped}건")
-    print(f"  신규 저장: {len(new_articles)}건  (Student Housing 신규: {sh_new}건)")
+    print(f"  신규 저장: {len(new_articles)}건  (Student Housing 신규: {sh_new}건 / Player 신규: {player_new}건)")
     print(f"  → {ARTICLES_CSV}")
 
 
