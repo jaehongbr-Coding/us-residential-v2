@@ -20,3 +20,10 @@ current_batch_id.txt
 # OS
 .DS_Store
 Thumbs.db
+
+# archive/ 물리 분리 작업 중 생성된 백업 디렉토리
+archive_bak/
+archive_bak2/
+
+# Claude Code 로컬 프로젝트 설정
+.claude/
