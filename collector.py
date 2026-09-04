@@ -41,7 +41,9 @@ CSV_COLUMNS = [
     "woomi_relevance", "claude_rationale", "access_limited", "korean_summary",
 ]
 
-WORKING_SET_MAX_ROWS = 8000  # 초과 시 rebuild_working_set(90)으로 작업본 재생성
+WORKING_SET_MAX_ROWS = 12000  # 초과 시 rebuild_working_set(90)으로 작업본 재생성
+# labels.db 분리(TODO #10) 완료 전까지는 rebuild 발동을 미루기 위해 높게 잡는다.
+# 분리 완료 후 8,000 이하로 되돌릴 것.
 
 # archive_manager는 CSV_COLUMNS/ARTICLES_CSV를 collector.py에서 import하므로
 # 순환 임포트가 생긴다. 두 상수가 이미 정의된 이 시점 이후에 import해야 안전하다.

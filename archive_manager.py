@@ -100,17 +100,42 @@ def rebuild_working_set(retention_days: int = 90) -> dict:
     """원장 전체에서 작업본(articles.csv)을 재생성한다.
     포함 기준: published_at이 최근 retention_days 이내 또는
     source가 "Player — "로 시작 (Player는 기간 무관 전량 유지).
-    반환: {"total": N, "recent": N, "player": N, "partitions_read": N}
+
+    ⚠️ 응급 가드 (2026.09): classifier.py는 archive/ 파티션에 분류 결과를
+    쓰지 않는다 — articles.csv(작업본)만 갱신한다. 따라서 이 함수가 원장에서
+    그대로 재생성하면 이미 분류된 기사가 원장의 미분류 원본으로 되돌아가
+    분류 결과가 소실된다. 이를 막기 위해 현재 articles.csv에 이미
+    classified=True로 존재하는 기사는 원장 버전 대신 기존 작업본 버전을 쓴다.
+    이 가드는 현재 작업본에 있는 기사의 분류만 보존한다. 이미 작업본에서
+    빠진 기사를 다시 끌어오면 원장의 미분류 원본이 온다. 근본 해법은
+    labels.db 분리다 — CLAUDE.md TODO #10 참조.
+
+    반환: {"total": N, "recent": N, "player": N, "partitions_read": N,
+           "preserved_classified": N}
     (recent·player는 겹칠 수 있어 합이 total과 다를 수 있다 — 진단용 원시 카운트)."""
     partitions = list_partitions()
     all_rows = read_archive(partitions)
     cutoff = datetime.now() - timedelta(days=retention_days)
 
+    # 응급 가드 — 기존 작업본의 classified=True 행을 article_id로 인덱싱
+    existing_classified = {}
+    if os.path.exists(ARTICLES_CSV):
+        with open(ARTICLES_CSV, encoding="utf-8", newline="") as f:
+            for row in csv.DictReader(f):
+                if row.get("classified", "").lower() == "true":
+                    existing_classified[row["article_id"]] = row
+
     recent_rows = []
     player_rows = []
     final_rows = []
+    preserved = 0
 
     for r in all_rows:
+        aid = r.get("article_id")
+        if aid in existing_classified:
+            r = existing_classified[aid]
+            preserved += 1
+
         pub = r.get("published_at", "")
         is_recent = False
         if _DATE_RE.match(pub):
@@ -132,9 +157,12 @@ def rebuild_working_set(retention_days: int = 90) -> dict:
         writer.writeheader()
         writer.writerows(final_rows)
 
+    print(f"[INFO] 기존 분류 결과 {preserved}건 보존 (원장 미분류 원본 대신 사용)")
+
     return {
         "total": len(final_rows),
         "recent": len(recent_rows),
         "player": len(player_rows),
         "partitions_read": len(partitions),
+        "preserved_classified": preserved,
     }

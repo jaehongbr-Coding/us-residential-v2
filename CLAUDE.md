@@ -43,11 +43,62 @@ US Residential Intelligence v2
 미국 주거 → 오피스뿐 아니라 국내 주택사업 인허가 동향, 자재비, 경쟁사 수주
 모니터링에도 같은 원리로 이식된다.
 
+### 원장의 물리 분리 (2026.09)
+
+3계층 원칙이 파일 구조로 실현됐다. `archive/YYYY-MM.csv`가 원장, `articles.csv`가
+작업본, `seen_index.db`가 인덱스다.
+
+**articles.csv의 지위가 바뀌었다.** "단일 output"에서 "원장에서 파생되는 작업본"으로.
+경로·파일명·CSV_COLUMNS(16개)는 여전히 고정이며 화면 계층(index.html/app.py/
+weekly_report.py)은 이 파일만 읽으므로 그대로 동작한다. 다만 이제 내용을 삭제해도
+`rebuild_working_set()`으로 원장에서 재생성 가능하다 — 예전처럼 "복구 불가능한
+유일본"이 아니다.
+
+**작업본 포함 기준**: published_at이 최근 90일 이내 **또는** source가
+`"Player — "`로 시작(Player는 기간 무관 전량 유지). 임계치는
+`WORKING_SET_MAX_ROWS` 초과 시에만 collector.py가 자동 재생성한다 —
+매일 재생성하지 않는 이유는 파티션 분리의 의미(일상 실행은 append만) 유지.
+
+**원장은 append-only다.** 한 번 쓴 과거 월 파티션은 다시 수정하지 않는다.
+`.gitattributes`에 `archive/*.csv merge=union`으로 선언돼 있다.
+
+**⚠️ merge=union의 알려진 한계**: union은 양쪽 변경을 모두 남기므로, 두 프로세스가
+같은 기사를 각자 append하면 중복 행이 그대로 병합되어 남는다. 이는 2026-09-03
+article_id 142건 사고와 같은 유형이며(TODO 미해결), archive/ 도입으로 새로
+생긴 문제는 아니지만 파티션에도 동일하게 적용된다.
+
+**쓰기 순서 규칙**: 원장 → 작업본 → seen_index.db commit. collector.py의
+`save_articles()`가 `archive_manager.append_to_archive()`를 먼저 호출한 뒤
+articles.csv에 append하고, `main()`은 그 다음에만 `conn.commit()`한다. 원장이
+source of truth이므로 가장 먼저 확정해야 한다 — 반대 순서면 원장 저장 실패 시
+"이미 봤음"만 기록되고 기사 자체를 영영 잃는다.
+
+**🔴 classifier.py 쓰기가 원장에 반영되지 않는다 — 응급 가드로 완화, 근본 해법 대기중.**
+classifier.py는 articles.csv(작업본)만 읽고 덮어쓴다. archive/ 파티션은 수집
+시점의 미분류 원본 그대로 남아 한 번도 갱신되지 않는다. `rebuild_working_set()`이
+발동하면 원장의 미분류 원본이 현재 분류된 articles.csv 내용을 덮어써 분류 결과가
+소실될 수 있었다. 2026.09 응급 조치로 `rebuild_working_set()`에 가드를 추가했다 —
+현재 작업본에 이미 classified=True로 있는 기사는 원장 버전 대신 기존 작업본
+버전을 유지한다. 이 가드는 **현재 작업본에 남아있는 기사에만** 적용된다. 이미
+작업본에서 90일 창 밖으로 빠진 기사는 다시 끌어올 경우 원장의 미분류 원본이
+온다 — 근본 해법은 아니고 임시 방어선이다. 근본 해법과 임계치는 TODO #10 참조.
+
+**참고 — weekly_report.py semi-annual 폴백 영향**: quarterly·semi-annual 리포트는
+평소 weekly `.md` 재요약 경로를 쓰지만, 폴백 경로(주간 리포트 3개 미만일 때
+articles.csv 직접 분석)는 이제 90일보다 먼 데이터를 가져올 수 없다 — semi-annual
+(180일) 폴백이 불완전한 데이터로 리포트를 생성할 위험이 있다.
+
 ## 파일 구조
-- collector.py: RSS 수집, CoStar intake, articles.csv 저장
-- classifier.py: Claude API 분류 (Haiku), run_classifier() export
+- collector.py: RSS 수집 → 원장(archive/) + 작업본(articles.csv) 동시 append
+- archive_manager.py: 원장 읽기·쓰기 모듈 (append_to_archive / read_archive /
+  list_partitions / rebuild_working_set). CSV_COLUMNS는 collector.py에서 import
+- migrate_to_archive.py: 일회성 마이그레이션 스크립트 (재실행 가능, 이미 완료됨)
+- classifier.py: Claude API 분류 (Haiku/Sonnet), run_classifier() export
 - app.py: Streamlit Article Feed + Market Dashboard
-- articles.csv: 단일 output (삭제/스키마 변경 금지)
+- archive/YYYY-MM.csv: 원장 — 월별 파티션, append-only, 영구 보존, 절대 삭제 금지
+- articles.csv: 작업본 — 원장에서 파생되는 뷰, 삭제·스키마 변경은 여전히 금지되나
+  이제 rebuild_working_set()으로 재생성 가능
+- seen_index.db: 중복 체크 인덱스, articles.csv/archive에서 파생되는 캐시
 
 ## 데이터 현황 (2026.08.24 실측)
 
@@ -342,6 +393,18 @@ woomi_relevance: CSV 저장만, UI 미노출
 8. daily_collect.yml 중복 실행 원인 규명 (2026-09-03 142건 사고,
    concurrency·SQLite 양쪽 모두 무력. 다음 실행 로그로 트리거 소스 확인)
 9. articles.csv 142건 중복 행 정리 (article_id 완전 일치 기준, TODO #4와 별건)
+10. 🔴 긴급: classifier.py가 archive/ 파티션에 분류 결과를 쓰지 않는 문제 수정
+    (rebuild_working_set 발동 시 분류 소실 위험. WORKING_SET_MAX_ROWS 도달까지
+    현재 유입 속도로는 약 3개월이나, 4섹터·지역 축 확장 시 몇 주로 단축된다.
+    확장 착수 전 필수 선결 과제.
+    해법 방향: classifier.py가 archive를 수정하게 하는 것은 append-only 원칙
+    위반이다. category·event_tags·woomi_relevance·korean_summary는 렌즈
+    산출물이므로 원장이 아닌 별도 사이드카(labels.db)에 분리 저장하고,
+    rebuild_working_set()이 원장+labels를 조인해 작업본을 생성하는 구조가
+    3계층 원칙과 일치한다. 2026.09 응급 조치로 rebuild_working_set()에
+    "현재 작업본의 classified=True 우선" 가드를 추가해뒀으나 임시 방어선일 뿐이다.)
+11. weekly_report.py semi-annual 폴백 경로가 90일 이상 데이터를 못 읽는 문제
+    (평소엔 weekly .md 재요약 경로라 영향 적음, 폴백 시에만 발생)
 
 ### 보류 (조건부)
 - weekly_report.py format_articles의 summary[:200] 확대 → 위 6번 완료 후 결정
