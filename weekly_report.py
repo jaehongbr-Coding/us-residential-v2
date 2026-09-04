@@ -33,6 +33,12 @@ REPORTS_DIR  = "reports"
 MODEL        = "claude-sonnet-4-6"
 MAX_TOKENS   = 4000
 
+# Player 소스(기업명 기반 Google News RSS)는 lookback_days가 최대 730일이라
+# published_at이 기존 관측창보다 20개월 앞선 기사를 포함한다. 원장에는 유지하되
+# 일상 브리핑(주간/월간/분기/반기 리포트)에는 노출하지 않는다 — 용도가 Deal Ledger
+# 아카이브이지 최근 동향 파악이 아니기 때문. CLAUDE.md "수집 구조 정정" 절 참조.
+PLAYER_SOURCE_PREFIX = "Player — "
+
 PERIOD_DAYS = {
     "weekly":       7,
     "monthly":      30,
@@ -92,7 +98,11 @@ def load_articles() -> list[dict]:
 def filter_by_period(articles: list[dict], days: int) -> list[dict]:
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=days)
     result = []
+    excluded_player = 0
     for a in articles:
+        if a.get("source", "").startswith(PLAYER_SOURCE_PREFIX):
+            excluded_player += 1
+            continue
         raw = a.get("published_at", "")
         if not raw:
             continue
@@ -104,6 +114,8 @@ def filter_by_period(articles: list[dict], days: int) -> list[dict]:
                 result.append(a)
         except ValueError:
             continue
+    if excluded_player:
+        print(f"[INFO] Player 소스 {excluded_player}건 제외 (아카이브 전용)")
     return result
 
 

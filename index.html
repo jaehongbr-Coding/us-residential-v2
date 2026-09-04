@@ -443,6 +443,14 @@
 const CSV_URL = "https://raw.githubusercontent.com/jaehongbr-Coding/us-residential-v2/main/articles.csv";
 let allRows = [];
 
+// Player 소스(기업명 기반 수집, lookback 최대 730일)는 published_at이 기존
+// 관측창보다 20개월 앞선 기사를 포함한다. 원장에는 유지하되 일상 브리핑(핵심
+// 모니터링·전략 신호 모니터)에는 노출하지 않는다 — 아카이브 용도이지 최근
+// 동향 파악용이 아니기 때문. CLAUDE.md "수집 구조 정정" 절 참조.
+// 예외: 누적 지표 헤더(archiveState, 축적량 표시)와 검색(전체 기사, Deal Ledger
+// 검색의 전신)은 의도적으로 Player를 포함한다 — 아래에서 제외 처리하지 않는다.
+const PLAYER_SOURCE_PREFIX = "Player — ";
+
 /* ── Helpers ── */
 function getLatestDateRange(rows) {
   const dates = rows
@@ -544,6 +552,7 @@ function render() {
   const highRows = (() => {
     // 1. 기본 필터 — 전체 기사 최신 날짜 기준
     const candidates = allRows.filter(r => {
+      if (r.source && r.source.startsWith(PLAYER_SOURCE_PREFIX)) return false;
       if (r.access_limited === "True") return false;
       if (r.woomi_relevance !== "높음") return false;
       const d = r.published_at ? r.published_at.slice(0, 10) : null;
@@ -572,6 +581,7 @@ function render() {
       extDate.setDate(extDate.getDate() - 2);
       const extFrom = extDate.toISOString().slice(0, 10);
       const ext = allRows.filter(r => {
+        if (r.source && r.source.startsWith(PLAYER_SOURCE_PREFIX)) return false;
         if (r.access_limited === "True") return false;
         if (r.woomi_relevance !== "높음") return false;
         const d = r.published_at ? r.published_at.slice(0, 10) : null;
@@ -593,6 +603,7 @@ function render() {
 
   // 전략 신호 — 전체 기사 최신 날짜 기준 2일치 (latestFrom 공용)
   const signalBase = allRows.filter(r => {
+    if (r.source && r.source.startsWith(PLAYER_SOURCE_PREFIX)) return false;
     if (r.access_limited === "True") return false;
     const d = r.published_at ? r.published_at.slice(0, 10) : null;
     if (!d || (latestFrom && d < latestFrom)) return false;

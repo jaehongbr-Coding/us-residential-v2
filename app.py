@@ -18,6 +18,13 @@ from classifier import run_classifier
 
 ARTICLES_CSV = "articles.csv"
 
+# Player 소스(기업명 기반 수집, lookback 최대 730일)는 published_at이 기존
+# 관측창보다 20개월 앞선 기사를 포함한다. 원장에는 유지하되 우미 관련 높음·
+# 전략 신호 모니터에는 노출하지 않는다 — 아카이브 용도이지 최근 동향 파악용이
+# 아니기 때문. CLAUDE.md "수집 구조 정정" 절 참조.
+# 예외: 전체 기사 섹션(article_table)은 Deal Ledger 검색의 전신이므로 제외하지 않는다.
+PLAYER_SOURCE_PREFIX = "Player — "
+
 st.set_page_config(
     page_title="US Residential Intelligence v2",
     page_icon="🏠",
@@ -155,6 +162,7 @@ def _render_table(df: pd.DataFrame, hide_paywalled: bool = False):
 
 def high_relevance_section(df: pd.DataFrame, hide_paywalled: bool, date_from, date_to):
     high = df[
+        (~df["source"].str.startswith(PLAYER_SOURCE_PREFIX)) &
         (df["woomi_relevance"] == "높음") &
         (df["published_at"].dt.date >= date_from) &
         (df["published_at"].dt.date <= date_to)
@@ -191,6 +199,7 @@ def signal_monitor_section(df: pd.DataFrame, hide_paywalled: bool, date_from, da
     st.markdown("### 📡 전략 신호 모니터")
 
     base = df[
+        (~df["source"].str.startswith(PLAYER_SOURCE_PREFIX)) &
         (df["published_at"].dt.date >= date_from) &
         (df["published_at"].dt.date <= date_to)
     ].copy()
