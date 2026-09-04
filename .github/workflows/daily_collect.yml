@@ -70,7 +70,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config merge.ours.driver true
 
-          git add articles.csv seen_index.db "archive/*.csv"
+          git add articles.csv seen_index.db labels.db "archive/*.csv"
           if git diff --cached --quiet; then
             echo "변경사항 없음. 커밋 스킵."
           else
@@ -78,16 +78,32 @@ jobs:
 
             if ! git pull --no-rebase origin main; then
               echo "merge 충돌 발생 — seen_index.db는 파생 캐시이므로 재생성으로 복구"
-              # 1단계: seen_index.db 충돌을 ours로 강제 해소해 merge를 완료한다
-              # (이 시점의 ours 내용 자체는 신뢰하지 않는다 — 2단계에서 덮어쓴다)
+
+              # labels.db는 전용 재생성 스크립트가 아직 없다(TODO: rebuild_labels.py).
+              # 최소 방어로, origin의 직전 커밋본 대비 행 수가 줄었는지만 검증한다.
+              git show origin/main:labels.db > /tmp/origin_labels.db 2>/dev/null || true
+              ORIGIN_LABELS_COUNT=$(python -c "import sqlite3, os; path='/tmp/origin_labels.db'; print(sqlite3.connect(path).execute('SELECT COUNT(*) FROM labels').fetchone()[0] if os.path.exists(path) else 0)" 2>/dev/null || echo "0")
+
+              # 1단계: seen_index.db/labels.db 충돌을 ours로 강제 해소해 merge를 완료한다
+              # (이 시점의 ours 내용 자체는 신뢰하지 않는다 — seen_index.db는 2단계에서
+              #  재생성하고, labels.db는 아래 행 수 검증으로 최소한의 안전만 확인한다)
               git checkout --ours -- seen_index.db
-              git add seen_index.db
-              git commit -m "merge: seen_index.db 충돌 해소 (ours, 이후 재생성)"
+              git checkout --ours -- labels.db
+              git add seen_index.db labels.db
+              git commit -m "merge: seen_index.db/labels.db 충돌 해소 (ours)"
 
               # 2단계: 병합이 끝난 articles.csv로부터 seen_index.db를 통째로 재생성한다
               python build_seen_index.py
               git add seen_index.db
               git diff --cached --quiet || git commit -m "chore: seen_index.db 재생성 (병합 충돌 복구, $(date +%Y-%m-%d))"
+
+              # labels.db 행 수 검증 — 감소했으면 분류 결과 소실 가능성이 크므로 중단한다
+              CURRENT_LABELS_COUNT=$(python -c "import sqlite3; print(sqlite3.connect('labels.db').execute('SELECT COUNT(*) FROM labels').fetchone()[0])")
+              echo "labels.db 행 수 — origin: ${ORIGIN_LABELS_COUNT} / 현재(ours): ${CURRENT_LABELS_COUNT}"
+              if [ "$CURRENT_LABELS_COUNT" -lt "$ORIGIN_LABELS_COUNT" ]; then
+                echo "[ERROR] labels.db 행 수 감소 감지 — 수동 확인 필요. articles.csv의 렌즈 필드로 복구 가능하다. CLAUDE.md TODO 참조"
+                exit 1
+              fi
             fi
 
             git push

@@ -63,25 +63,69 @@ weekly_report.py)은 이 파일만 읽으므로 그대로 동작한다. 다만 �
 `.gitattributes`에 `archive/*.csv merge=union`으로 선언돼 있다.
 
 **⚠️ merge=union의 알려진 한계**: union은 양쪽 변경을 모두 남기므로, 두 프로세스가
-같은 기사를 각자 append하면 중복 행이 그대로 병합되어 남는다. 이는 2026-09-03
-article_id 142건 사고와 같은 유형이며(TODO 미해결), archive/ 도입으로 새로
-생긴 문제는 아니지만 파티션에도 동일하게 적용된다.
+같은 기사를 각자 append하면 중복 행이 그대로 병합되어 남는다. 2026-09-03
+article_id 142건 사고가 이 유형이었다(TODO #9, 2026.09 정리 완료 — 아래 참조).
+archive/ 도입으로 새로 생긴 문제는 아니지만 파티션에도 동일하게 적용되므로,
+TODO #8(이중 실행 원인)이 해결되기 전까지는 재발할 수 있다.
 
-**쓰기 순서 규칙**: 원장 → 작업본 → seen_index.db commit. collector.py의
-`save_articles()`가 `archive_manager.append_to_archive()`를 먼저 호출한 뒤
-articles.csv에 append하고, `main()`은 그 다음에만 `conn.commit()`한다. 원장이
-source of truth이므로 가장 먼저 확정해야 한다 — 반대 순서면 원장 저장 실패 시
-"이미 봤음"만 기록되고 기사 자체를 영영 잃는다.
+**article_id 완전 중복 142건 정리 완료 (TODO #9, 2026.09)**: 2026-09-03 daily_collect.yml
+이중 실행으로 생긴 중복 중, collected_at 외 수집 필드(published_at/source/title/
+url/summary/access_limited)가 전부 동일한 119건만 정리했다 — 같은 article_id 중
+collected_at이 가장 이른 행을 남기고 나머지를 archive/articles.csv 양쪽에서
+제거했다. 나머지 23건은 title/summary/source 등이 달라(같은 URL이지만 RSS
+재수집 시 메타데이터가 미세하게 달라진 경우) 서로 다른 상황일 수 있어 손대지
+않았다 — `removed_duplicates.log`에 제거 내역이 남아있다.
 
-**🔴 classifier.py 쓰기가 원장에 반영되지 않는다 — 응급 가드로 완화, 근본 해법 대기중.**
-classifier.py는 articles.csv(작업본)만 읽고 덮어쓴다. archive/ 파티션은 수집
-시점의 미분류 원본 그대로 남아 한 번도 갱신되지 않는다. `rebuild_working_set()`이
-발동하면 원장의 미분류 원본이 현재 분류된 articles.csv 내용을 덮어써 분류 결과가
-소실될 수 있었다. 2026.09 응급 조치로 `rebuild_working_set()`에 가드를 추가했다 —
-현재 작업본에 이미 classified=True로 있는 기사는 원장 버전 대신 기존 작업본
-버전을 유지한다. 이 가드는 **현재 작업본에 남아있는 기사에만** 적용된다. 이미
-작업본에서 90일 창 밖으로 빠진 기사는 다시 끌어올 경우 원장의 미분류 원본이
-온다 — 근본 해법은 아니고 임시 방어선이다. 근본 해법과 임계치는 TODO #10 참조.
+이 정리는 **append-only 원칙의 명시적 예외**다. 원장은 원칙적으로 과거 파티션을
+다시 쓰지 않지만, "동일 기사의 물리적 중복 제거는 판단이 아니므로 허용한다"는
+설계 원칙(위 "3계층 분리" 절)에 따라 `dedupe_duplicates.py`가 파티션을 통째로
+rewrite했다. 재발 시(TODO #8 미해결) 같은 스크립트로 같은 방식으로 정리하면 된다.
+
+**정합성 검증 기준선은 이제 0이다.** 이 정리 전까지는 archive↔labels.db
+dry-run 비교에서 142건 불일치가 "알려진 노이즈"로 허용됐으나, 정리 후에는
+0건이 정상이다. 향후 dry-run 비교에서 불일치가 1건이라도 나오면 노이즈로
+넘기지 말고 즉시 실제 문제로 판정할 것.
+
+**쓰기 순서 규칙**: 원장 → 작업본 → seen_index.db commit (수집 시), labels.db →
+작업본 (분류 시). collector.py의 `save_articles()`가
+`archive_manager.append_to_archive()`를 먼저 호출한 뒤 articles.csv에 append하고,
+`main()`은 그 다음에만 `conn.commit()`한다. classifier.py는 `label_store.upsert_labels()`로
+labels.db에 먼저 쓰고 commit한 뒤에만 articles.csv를 덮어쓴다. 두 경우 모두
+영속 저장소(원장/labels.db)가 source of truth이므로 가장 먼저 확정해야 한다 —
+반대 순서면 저장 실패 시 "이미 처리됨"만 기록되고 실제 내용은 영영 잃는다.
+
+**🟢 classifier.py 쓰기가 원장에 반영되지 않는 문제 — labels.db 분리로 해결 (2026.09).**
+과거에는 classifier.py가 articles.csv(작업본)만 갱신해, archive/ 파티션은 수집
+시점의 미분류 원본 그대로 남았다. `rebuild_working_set()`이 발동하면 원장의
+미분류 원본이 분류 결과를 덮어써 소실되는 구조적 위험이 있었다 (임시로
+"현재 작업본 classified=True 우선" 응급 가드를 넣었으나 근본 해법은 아니었다).
+
+**근본 해법 — 렌즈 산출물을 labels.db(SQLite)로 물리 분리했다.** 필드를 두
+부류로 나눈다:
+
+| 구분 | 필드 | 저장 위치 |
+|---|---|---|
+| 수집 사실 (8개) | article_id, collected_at, published_at, source, title, url, summary, access_limited | archive/ (원장) |
+| 렌즈 산출물 (8개) | classified, category, event_tags, signal_type, sector, woomi_relevance, claude_rationale, korean_summary | labels.db |
+
+articles.csv(CSV_COLUMNS 16개, 화면 계층 호환을 위해 불변)는 이제 **원장 +
+labels.db의 조인 뷰**다. `rebuild_working_set()`이 원장에서 수집 8필드를 읽고
+`label_store.get_labels()`로 렌즈 8필드를 조회해 병합한다 — labels.db에 없는
+article_id는 렌즈 필드가 빈 값(classified='False')으로 채워진다. 위 응급
+가드는 이 함수에서 제거했다 — labels.db가 렌즈 산출물의 유일한 source of
+truth가 되면서 가드가 대체됐다.
+
+**이 분리로 "SYSTEM_PROMPT 한 블록 교체 → Office Intelligence 전환"이 실제로
+가능해졌다.** labels.db를 비우고 재분류하면 되며, 원장(archive/)은 전혀 손대지
+않는다 — 위 "3계층 분리" 절이 말하던 렌즈 교체가 파일 구조로 실현된 것이다.
+
+`lens_version` 필드는 향후 렌즈를 교체하거나 2단 스크리닝(Haiku 1차 선별 →
+Sonnet 정밀 분류)을 도입할 때 어느 버전으로 분류됐는지 구분하기 위한 자리다.
+현재는 `'v1'`로 고정.
+
+**archive/ 축소는 아직 보류 중.** 원장 파티션에는 여전히 렌즈 8필드가 남아있다
+(labels.db 이관 시 삭제하지 않았다). labels.db가 몇 주 운영 검증된 뒤 축소할
+것 — TODO 참조.
 
 **참고 — weekly_report.py semi-annual 폴백 영향**: quarterly·semi-annual 리포트는
 평소 weekly `.md` 재요약 경로를 쓰지만, 폴백 경로(주간 리포트 3개 미만일 때
@@ -91,14 +135,27 @@ articles.csv 직접 분석)는 이제 90일보다 먼 데이터를 가져올 수
 ## 파일 구조
 - collector.py: RSS 수집 → 원장(archive/) + 작업본(articles.csv) 동시 append
 - archive_manager.py: 원장 읽기·쓰기 모듈 (append_to_archive / read_archive /
-  list_partitions / rebuild_working_set). CSV_COLUMNS는 collector.py에서 import
-- migrate_to_archive.py: 일회성 마이그레이션 스크립트 (재실행 가능, 이미 완료됨)
-- classifier.py: Claude API 분류 (Haiku/Sonnet), run_classifier() export
+  list_partitions / rebuild_working_set). CSV_COLUMNS는 collector.py에서 import.
+  rebuild_working_set()은 원장 + labels.db를 조인해 작업본을 만든다
+- label_store.py: 렌즈 산출물(분류 8필드) 저장소 모듈 (open_labels / get_labels /
+  upsert_labels / count_labels). LABEL_FIELDS 상수로 8필드 목록 정의
+- migrate_to_archive.py: 일회성 마이그레이션 스크립트 (재실행 가능, 이미 완료됨).
+  articles.csv → archive/ 파티션
+- migrate_to_labels.py: 일회성 마이그레이션 스크립트 (재실행 가능, 이미 완료됨).
+  articles.csv + archive/ → labels.db. 하드코딩된 검증 임계치가 있어 CI 자동화에는
+  부적합 — 수동 실행 전용
+- dedupe_duplicates.py: article_id 완전 중복 정리 도구 (재실행 가능). append-only
+  예외로 archive/ 파티션을 rewrite한다 — TODO #8 재발 시 재사용
+- classifier.py: Claude API 분류 (Haiku/Sonnet), run_classifier() export.
+  분류 결과를 labels.db에 먼저 쓰고(upsert_labels) articles.csv를 그 다음 덮어쓴다
 - app.py: Streamlit Article Feed + Market Dashboard
-- archive/YYYY-MM.csv: 원장 — 월별 파티션, append-only, 영구 보존, 절대 삭제 금지
-- articles.csv: 작업본 — 원장에서 파생되는 뷰, 삭제·스키마 변경은 여전히 금지되나
-  이제 rebuild_working_set()으로 재생성 가능
+- archive/YYYY-MM.csv: 원장 — 월별 파티션, append-only(물리적 중복 제거는 예외),
+  영구 보존, 절대 삭제 금지
+- articles.csv: 작업본 — 원장 + labels.db의 조인 뷰, 삭제·스키마 변경은 여전히
+  금지되나 이제 rebuild_working_set()으로 재생성 가능
 - seen_index.db: 중복 체크 인덱스, articles.csv/archive에서 파생되는 캐시
+- labels.db: 렌즈 산출물(분류 8필드) 저장소, articles.csv/archive에서 파생되되
+  이제 이쪽이 분류 결과의 유일한 source of truth. article_id PRIMARY KEY
 
 ## 데이터 현황 (2026.08.24 실측)
 
@@ -392,19 +449,26 @@ woomi_relevance: CSV 저장만, UI 미노출
 7. weekly_report.py 모델 claude-sonnet-4-5 → claude-sonnet-4-6
 8. daily_collect.yml 중복 실행 원인 규명 (2026-09-03 142건 사고,
    concurrency·SQLite 양쪽 모두 무력. 다음 실행 로그로 트리거 소스 확인)
-9. articles.csv 142건 중복 행 정리 (article_id 완전 일치 기준, TODO #4와 별건)
-10. 🔴 긴급: classifier.py가 archive/ 파티션에 분류 결과를 쓰지 않는 문제 수정
-    (rebuild_working_set 발동 시 분류 소실 위험. WORKING_SET_MAX_ROWS 도달까지
-    현재 유입 속도로는 약 3개월이나, 4섹터·지역 축 확장 시 몇 주로 단축된다.
-    확장 착수 전 필수 선결 과제.
-    해법 방향: classifier.py가 archive를 수정하게 하는 것은 append-only 원칙
-    위반이다. category·event_tags·woomi_relevance·korean_summary는 렌즈
-    산출물이므로 원장이 아닌 별도 사이드카(labels.db)에 분리 저장하고,
-    rebuild_working_set()이 원장+labels를 조인해 작업본을 생성하는 구조가
-    3계층 원칙과 일치한다. 2026.09 응급 조치로 rebuild_working_set()에
-    "현재 작업본의 classified=True 우선" 가드를 추가해뒀으나 임시 방어선일 뿐이다.)
+9. ✅ 완료 (2026.09) — articles.csv/archive의 article_id 완전 중복 정리.
+   142건 중 119건(collected_at만 다른 안전한 쌍) 정리, 23건은 title/summary/source가
+   달라 제외(removed_duplicates.log 참조). TODO #4(제목 유사도 기준 167행)와는
+   별건으로 그대로 남아있음. TODO #8이 재발하면 dedupe_duplicates.py 재사용
+10. ✅ 완료 (2026.09) — classifier.py가 archive/ 파티션에 분류 결과를 쓰지
+    않아 rebuild_working_set 발동 시 분류가 소실되던 문제. 렌즈 산출물을
+    labels.db(SQLite)로 물리 분리해 해결 — 원장은 수집 8필드만, labels.db가
+    분류 8필드의 유일한 source of truth. rebuild_working_set()이 원장+labels.db를
+    조인해 작업본을 생성한다. 2026.09 응급 가드("작업본 classified=True 우선")는
+    제거됨 — labels.db가 대체. 자세한 내용은 위 "원장의 물리 분리" 절 참조
 11. weekly_report.py semi-annual 폴백 경로가 90일 이상 데이터를 못 읽는 문제
     (평소엔 weekly .md 재요약 경로라 영향 적음, 폴백 시에만 발생)
+12. archive/ 파티션에서 렌즈 8필드 제거 (원장 축소) — labels.db 운영 검증
+    후 진행. 지금은 파티션에 렌즈 필드가 중복 보존된 상태(용량 낭비이나 무해)
+13. labels.db 전용 재생성 스크립트 작성 (rebuild_labels.py). articles.csv의
+    렌즈 8필드에서 labels.db를 복원하는 멱등 스크립트. migrate_to_labels.py는
+    하드코딩된 검증 임계치가 있어 CI 자동화에 부적합하다. 작성 후
+    daily_collect.yml 충돌 폴백 로직에 seen_index.db와 동일하게 연결할 것 —
+    현재는 origin 대비 행 수 감소만 검사하는 최소 방어만 있음 (daily_collect.yml
+    79~107행)
 
 ### 보류 (조건부)
 - weekly_report.py format_articles의 summary[:200] 확대 → 위 6번 완료 후 결정

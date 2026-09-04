@@ -13,6 +13,8 @@ from datetime import datetime
 import anthropic
 from dotenv import load_dotenv
 
+import label_store
+
 load_dotenv()
 
 # Windows cp949 터미널에서 한글·특수문자 출력 가능하도록
@@ -291,6 +293,11 @@ def run_classifier() -> dict:
 
     batch_results = classify_batch(client, batch_articles)
 
+    # 렌즈 산출물은 labels.db가 source of truth다. articles.csv 저장보다
+    # 먼저 확정한다 — 반대 순서면 CSV 저장 실패 시 분류 결과가 labels.db에도
+    # articles.csv에도 없는 상태가 될 수 있다.
+    labels_conn = label_store.open_labels()
+
     success = 0
     failed  = 0
     for article in batch_articles:
@@ -299,9 +306,14 @@ def run_classifier() -> dict:
         if result["woomi_relevance"]:
             article_map[aid].update(result)
             article_map[aid]["classified"] = True
+            label_dict = {f: str(article_map[aid].get(f, "")) for f in label_store.LABEL_FIELDS}
+            label_store.upsert_labels(labels_conn, aid, label_dict)
             success += 1
         else:
             failed += 1
+
+    labels_conn.commit()
+    labels_conn.close()
 
     save_articles(list(article_map.values()))
 

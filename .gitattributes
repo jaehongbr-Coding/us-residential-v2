@@ -1,3 +1,4 @@
 articles.csv merge=union
 seen_index.db binary merge=ours
+labels.db binary merge=ours
 archive/*.csv merge=union
