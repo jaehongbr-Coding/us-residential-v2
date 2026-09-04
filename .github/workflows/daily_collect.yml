@@ -70,7 +70,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config merge.ours.driver true
 
-          git add articles.csv seen_index.db
+          git add articles.csv seen_index.db "archive/*.csv"
           if git diff --cached --quiet; then
             echo "변경사항 없음. 커밋 스킵."
           else

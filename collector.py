@@ -1,6 +1,6 @@
 """
 US Residential Intelligence v2 — collector.py
-수집 전용. RSS 파싱 → 중복 제거 → articles.csv append.
+수집 전용. RSS 파싱 → 중복 제거 → 원장(archive/) 및 작업본(articles.csv) append.
 분류는 classifier.py가 담당.
 """
 
@@ -40,6 +40,12 @@ CSV_COLUMNS = [
     "category", "event_tags", "signal_type", "sector",
     "woomi_relevance", "claude_rationale", "access_limited", "korean_summary",
 ]
+
+WORKING_SET_MAX_ROWS = 8000  # 초과 시 rebuild_working_set(90)으로 작업본 재생성
+
+# archive_manager는 CSV_COLUMNS/ARTICLES_CSV를 collector.py에서 import하므로
+# 순환 임포트가 생긴다. 두 상수가 이미 정의된 이 시점 이후에 import해야 안전하다.
+import archive_manager
 
 RSS_FEEDS = [
     # 코어 — Multifamily
@@ -599,13 +605,21 @@ def mark_seen(conn: sqlite3.Connection, article: dict) -> None:
 # 4. CSV 저장
 # ------------------------------------------------------------------
 
-def save_articles(articles: list[dict]) -> None:
+def save_articles(articles: list[dict]) -> dict:
+    """원장(archive/)에 먼저 쓰고, 그 다음 작업본(articles.csv)에 append한다.
+    원장이 source of truth이므로 항상 먼저 확정한다 — 반대 순서면 작업본 저장
+    실패 시 원장에 없는 기사가 생길 수 있다.
+    반환: append_to_archive()의 월별 기록 건수 dict."""
+    archive_result = archive_manager.append_to_archive(articles)
+
     file_exists = os.path.exists(ARTICLES_CSV)
     with open(ARTICLES_CSV, "a", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
         if not file_exists:
             writer.writeheader()
         writer.writerows(articles)
+
+    return archive_result
 
 
 # ------------------------------------------------------------------
@@ -698,8 +712,9 @@ def main():
                     mark_seen(conn, article)
                     new_articles.append(article)
 
+        archive_result = {}
         if new_articles:
-            save_articles(new_articles)
+            archive_result = save_articles(new_articles)
 
         # CSV 저장이 끝난 뒤에만 commit한다 — 반대 순서면 CSV 저장 실패 시
         # DB에만 기록이 남아 해당 기사를 영영 다시 수집하지 못한다.
@@ -707,10 +722,23 @@ def main():
     finally:
         conn.close()
 
+    # ------------------------------------------------------------------
+    # 작업본 유지관리 — 임계치 초과 시 원장에서 재생성
+    # ------------------------------------------------------------------
+    with open(ARTICLES_CSV, encoding="utf-8", newline="") as f:
+        working_set_rows = sum(1 for _ in csv.DictReader(f))
+    if working_set_rows > WORKING_SET_MAX_ROWS:
+        rebuild_result = archive_manager.rebuild_working_set(retention_days=90)
+        print(f"[INFO] 작업본 재생성: {working_set_rows}행 → {rebuild_result['total']}행")
+
     print(f"\n--- 수집 완료 ---")
     print(f"  전체 수집: {total_fetched}건")
     print(f"  중복 skip: {total_skipped}건")
     print(f"  신규 저장: {len(new_articles)}건  (Student Housing 신규: {sh_new}건 / Player 신규: {player_new}건)")
+    if archive_result:
+        skipped = archive_result.get("_skipped", 0)
+        months = {k: v for k, v in archive_result.items() if k != "_skipped"}
+        print(f"  원장 기록: {months}" + (f" (skip {skipped}건)" if skipped else ""))
     print(f"  → {ARTICLES_CSV}")
 
 
