@@ -268,50 +268,52 @@ BLUE_VISTA_UNIVERSITIES = [
 
 INDUSTRY_PLAYERS = [
     # Tier 1 — 진행 중인 Mizzou PBSH 딜 직접 관계자 (쿼리를 SH로 한정하지 않고 넓게 잡는다)
-    {"name": "Blue Vista Capital Management", "query": '"Blue Vista" real estate',          "tier": 1},
-    {"name": "PeakMade Real Estate",          "query": '"PeakMade" student housing',        "tier": 1},
-    {"name": "Ascentris",                     "query": '"Ascentris" real estate',           "tier": 1},
-    {"name": "The Dinerstein Companies",      "query": '"Dinerstein" student housing',      "tier": 1},
+    # lookback_days=730: 2026-09 진단 결과 사모 운용사 특유의 낮은 뉴스 빈도 대비
+    # 90일 창이 구조적으로 안 맞음을 확인 (CLAUDE.md "수집 구조 정정" 절 참조)
+    {"name": "Blue Vista Capital Management", "query": '"Blue Vista Capital Management"',   "tier": 1, "lookback_days": 730},
+    {"name": "PeakMade Real Estate",          "query": '"PeakMade"',                        "tier": 1, "lookback_days": 730},
+    {"name": "Ascentris",                     "query": '"Ascentris"',                       "tier": 1, "lookback_days": 730},
+    {"name": "The Dinerstein Companies",      "query": '"The Dinerstein Companies"',        "tier": 1, "lookback_days": 730},
 
     # Tier 2 — SH 전업 개발사·운영사
-    {"name": "The Scion Group",               "query": '"The Scion Group" student housing', "tier": 2},
-    {"name": "Landmark Properties",           "query": '"Landmark Properties" student housing', "tier": 2},
-    {"name": "Core Spaces",                   "query": '"Core Spaces" student housing',     "tier": 2},
-    {"name": "Cardinal Group",                "query": '"Cardinal Group" student housing',  "tier": 2},
-    {"name": "Campus Advantage",              "query": '"Campus Advantage" student housing', "tier": 2},
-    {"name": "The Preiss Company",            "query": '"The Preiss Company" student housing', "tier": 2},
-    {"name": "Coastal Ridge Real Estate",     "query": '"Coastal Ridge Real Estate" student housing', "tier": 2},
-    {"name": "Student Quarters",              "query": '"Student Quarters" student housing', "tier": 2},
-    {"name": "Article Student Living",        "query": '"Article Student Living" student housing', "tier": 2},
-    {"name": "Campus Apartments",             "query": '"Campus Apartments" student housing', "tier": 2},
-    {"name": "CA Ventures",                   "query": '"CA Ventures" student housing',     "tier": 2},
-    {"name": "Asset Living",                  "query": '"Asset Living" student housing',    "tier": 2},
-    {"name": "Subtext",                       "query": '"Subtext" student housing',         "tier": 2},
-    {"name": "LV Collective",                 "query": '"LV Collective" student housing',   "tier": 2},
-    {"name": "Up Campus",                     "query": '"Up Campus" student housing',       "tier": 2},
-    {"name": "Fountain Residential Partners", "query": '"Fountain Residential Partners" student housing', "tier": 2},
-    {"name": "Servitas",                      "query": '"Servitas" student housing',        "tier": 2},
-    {"name": "Greystar",                      "query": '"Greystar" student housing',        "tier": 2},
+    {"name": "The Scion Group",               "query": '"The Scion Group" student housing', "tier": 2, "lookback_days": 365},
+    {"name": "Landmark Properties",           "query": '"Landmark Properties" student housing', "tier": 2, "lookback_days": 365},
+    {"name": "Core Spaces",                   "query": '"Core Spaces" student housing',     "tier": 2, "lookback_days": 365},
+    {"name": "Cardinal Group",                "query": '"Cardinal Group" student housing',  "tier": 2, "lookback_days": 365},
+    {"name": "Campus Advantage",              "query": '"Campus Advantage" student housing', "tier": 2, "lookback_days": 365},
+    {"name": "The Preiss Company",            "query": '"The Preiss Company" student housing', "tier": 2, "lookback_days": 365},
+    {"name": "Coastal Ridge Real Estate",     "query": '"Coastal Ridge Real Estate" student housing', "tier": 2, "lookback_days": 365},
+    {"name": "Student Quarters",              "query": '"Student Quarters" student housing', "tier": 2, "lookback_days": 365},
+    {"name": "Article Student Living",        "query": '"Article Student Living" student housing', "tier": 2, "lookback_days": 365},
+    {"name": "Campus Apartments",             "query": '"Campus Apartments" student housing', "tier": 2, "lookback_days": 365},
+    {"name": "CA Ventures",                   "query": '"CA Ventures" student housing',     "tier": 2, "lookback_days": 365},
+    {"name": "Asset Living",                  "query": '"Asset Living" student housing',    "tier": 2, "lookback_days": 365},
+    {"name": "Subtext",                       "query": '"Subtext" student housing',         "tier": 2, "lookback_days": 365},
+    {"name": "LV Collective",                 "query": '"LV Collective" student housing',   "tier": 2, "lookback_days": 365},
+    {"name": "Up Campus",                     "query": '"Up Campus" student housing',       "tier": 2, "lookback_days": 365},
+    {"name": "Fountain Residential Partners", "query": '"Fountain Residential Partners" student housing', "tier": 2, "lookback_days": 365},
+    {"name": "Servitas",                      "query": '"Servitas" student housing',        "tier": 2, "lookback_days": 365},
+    {"name": "Greystar",                      "query": '"Greystar" student housing',        "tier": 2, "lookback_days": 365},
 
     # Tier 3 — SH에 자본을 집행하는 기관
-    {"name": "Harrison Street",               "query": '"Harrison Street" student housing', "tier": 3},
-    {"name": "Hawkins Way Capital",           "query": '"Hawkins Way Capital" student housing', "tier": 3},
-    {"name": "Affinius Capital",              "query": '"Affinius Capital" student housing', "tier": 3},
-    {"name": "PCCP",                          "query": '"PCCP" student housing',            "tier": 3},
-    {"name": "QuadReal",                      "query": '"QuadReal" student housing',        "tier": 3},
-    {"name": "Nuveen",                        "query": '"Nuveen" student housing',          "tier": 3},
-    {"name": "Ares Management",               "query": '"Ares Management" student housing', "tier": 3},
-    {"name": "Kayne Anderson Real Estate",    "query": '"Kayne Anderson Real Estate" student housing', "tier": 3},
-    {"name": "Blackstone",                    "query": '"Blackstone" student housing',      "tier": 3},
-    {"name": "Brookfield",                    "query": '"Brookfield" student housing',      "tier": 3},
+    {"name": "Harrison Street",               "query": '"Harrison Street" student housing', "tier": 3, "lookback_days": 365},
+    {"name": "Hawkins Way Capital",           "query": '"Hawkins Way Capital" student housing', "tier": 3, "lookback_days": 365},
+    {"name": "Affinius Capital",              "query": '"Affinius Capital" student housing', "tier": 3, "lookback_days": 365},
+    {"name": "PCCP",                          "query": '"PCCP" student housing',            "tier": 3, "lookback_days": 365},
+    {"name": "QuadReal",                      "query": '"QuadReal" student housing',        "tier": 3, "lookback_days": 365},
+    {"name": "Nuveen",                        "query": '"Nuveen" student housing',          "tier": 3, "lookback_days": 365},
+    {"name": "Ares Management",               "query": '"Ares Management" student housing', "tier": 3, "lookback_days": 365},
+    {"name": "Kayne Anderson Real Estate",    "query": '"Kayne Anderson Real Estate" student housing', "tier": 3, "lookback_days": 365},
+    {"name": "Blackstone",                    "query": '"Blackstone" student housing',      "tier": 3, "lookback_days": 365},
+    {"name": "Brookfield",                    "query": '"Brookfield" student housing',      "tier": 3, "lookback_days": 365},
 
-    # Tier 4 — 중개·자문 (거래 파이프라인 조기 신호원)
-    {"name": "TSB Capital Advisors",          "query": '"TSB Capital Advisors" student housing', "tier": 4},
-    {"name": "Walker & Dunlop",               "query": '"Walker & Dunlop" student housing', "tier": 4},
-    {"name": "Berkadia",                      "query": '"Berkadia" student housing',        "tier": 4},
-    {"name": "JLL",                           "query": '"JLL" student housing',             "tier": 4},
-    {"name": "Newmark",                       "query": '"Newmark" student housing',         "tier": 4},
-    {"name": "Institutional Property Advisors", "query": '"Institutional Property Advisors" student housing', "tier": 4},
+    # Tier 4 — 중개·자문 (거래 파이프라인 조기 신호원; 뉴스 빈도가 높아 창을 짧게 유지)
+    {"name": "TSB Capital Advisors",          "query": '"TSB Capital Advisors" student housing', "tier": 4, "lookback_days": 180},
+    {"name": "Walker & Dunlop",               "query": '"Walker & Dunlop" student housing', "tier": 4, "lookback_days": 180},
+    {"name": "Berkadia",                      "query": '"Berkadia" student housing',        "tier": 4, "lookback_days": 180},
+    {"name": "JLL",                           "query": '"JLL" student housing',             "tier": 4, "lookback_days": 180},
+    {"name": "Newmark",                       "query": '"Newmark" student housing',         "tier": 4, "lookback_days": 180},
+    {"name": "Institutional Property Advisors", "query": '"Institutional Property Advisors" student housing', "tier": 4, "lookback_days": 180},
 ]
 
 REQUEST_HEADERS = {
@@ -382,7 +384,9 @@ def _make_google_news_query_url(query: str) -> str:
 
 def fetch_industry_player_feed(player: dict) -> list[dict]:
     """기업명 기반 Google News RSS 수집. sector = 'Student Housing' 고정(초기값,
-    classifier.py가 이후 덮어쓴다)."""
+    classifier.py가 이후 덮어쓴다).
+    대학·일반 RSS 피드와 달리 피드별 lookback_days를 사용한다.
+    이유는 CLAUDE.md '수집 구조 정정' 절 참조."""
     name = player["name"]
     url = _make_google_news_query_url(player["query"])
     source_label = f"Player — {name}"
@@ -391,9 +395,9 @@ def fetch_industry_player_feed(player: dict) -> list[dict]:
     except Exception as e:
         print(f"    [SKIP] {name} — feedparser 오류: {e}")
         return []
-    cutoff = datetime.now() - timedelta(days=90)  # 90일 이내 기사만 수집
+    cutoff = datetime.now() - timedelta(days=player.get("lookback_days", 90))
     articles = []
-    for entry in feed.entries[:12]:
+    for entry in feed.entries[:30]:
         title = _clean_html(entry.get("title", "")).strip()
         link = (entry.get("link") or "").strip()
         if not title or not link:
