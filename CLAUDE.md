@@ -146,6 +146,45 @@ BLUE_VISTA_UNIVERSITIES(대학 로컬 뉴스)만으로는 스폰서·운영사·
 초회 실행 기준 Player 소스 신규 64건, 그중 Tier1 4개사는 0건 — 쿼리 튜닝은
 결과를 보고 별도 결정.
 
+**기업명 피드는 tier별 lookback_days를 사용한다 (2026.09 확인)**
+
+`fetch_industry_player_feed()`는 대학·일반 RSS 피드의 90일 cutoff와 달리 Tier별로
+서로 다른 수집 창을 쓴다: Tier1(딜 직접 관계자) 730일, Tier2·3(SH 개발사·운영사·기관자본)
+365일, Tier4(중개·자문) 180일. 대학 피드의 90일은 의도적으로 그대로 유지했다.
+
+이 예외가 정당한 이유는 Player 피드의 source 값이 `"Player — "` 접두사로 완전히
+분리되어 있어, 기존 대학·RSS 기저선 시계열을 오염시키지 않기 때문이다. 대학 피드에
+같은 예외를 주면 "관측창 불균질" 절의 착시 문제가 재발한다. **따라서 published_at
+기준 통계를 낼 때는 Player 소스를 분리하거나 제외할 것.**
+
+Tier1 4개사(Blue Vista·PeakMade·Ascentris·Dinerstein)가 90일 창에서 전원 0건이던
+원인은 쿼리 문제가 아니라 사모 운용사 특유의 낮은 뉴스 빈도(연 5~15건 수준)에 90일
+창이 구조적으로 안 맞았기 때문으로 진단됐다. 창을 730일로 넓히자 Blue Vista 14 /
+PeakMade 5 / Ascentris 8 / Dinerstein 10건으로 즉시 해소됐다.
+
+같은 진단에서 Blue Vista는 쿼리를 좁혀야 하는 소스임이 드러났다. `"Blue Vista" real
+estate`는 동명 지명·단지명 오탐(호주 부동산 매물 "47 Blue Vista, Hopetoun" 등)이
+섞여 `"Blue Vista Capital Management"`로 교체했다. 반면 PeakMade·Ascentris·
+Dinerstein은 동명 충돌 위험이 낮아 오히려 한정어(`student housing` 등)를 제거하거나
+정식 법인명으로 넓혀 커버리지를 늘렸다.
+
+**Player 소스는 표시·리포트 계층에서 제외된다 (2026.09 확인)**
+
+원장(articles.csv)에는 Player 소스가 그대로 남지만, weekly_report.py의
+`filter_by_period()`와 index.html·app.py의 핵심 모니터링/전략 신호 모니터에서는
+`source`가 `"Player — "`로 시작하는 행을 제외한다. 판정 기준은 각 파일에
+`PLAYER_SOURCE_PREFIX` 상수 하나로 정의해 재사용하며, 세 파일에 흩어 하드코딩하지
+않는다.
+
+예외 두 곳은 의도된 포함이다: ① 누적 지표 헤더(archiveState 등 축적량 표시)는
+Player를 포함해야 원장 규모를 정확히 반영한다. ② 전체 기사 섹션의 검색 기능은
+Deal Ledger 검색의 전신이므로 Player 기사가 검색 대상에 남아 있어야 한다.
+
+이 분리는 3계층 원칙(원장/렌즈/화면)의 실제 적용 사례다. 수집은 넓게(원장에 lookback
+최대 730일까지 보존), 판단은 렌즈에서(classifier.py는 변경 없음), 노출은 화면에서
+좁게(일상 브리핑에서 아카이브 시점 제외). 향후 원장과 브리핑용 작업본을 물리적으로
+분리할 때 이 소스-접두사 기반 분리 규칙이 그 전신이 된다.
+
 ## articles.csv 컬럼 (16개 확정)
 article_id, collected_at, published_at, source, title,
 url, summary, classified, category, event_tags,
