@@ -1,4 +1,4 @@
-const CACHE_NAME = "the-brief-ea8d593f";
+const CACHE_NAME = "the-brief-02c26da7";
 
 const PRECACHE_URLS = [
   "/us-residential-v2/",
