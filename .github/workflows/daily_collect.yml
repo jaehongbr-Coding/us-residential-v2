@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Pull latest changes
+        run: git pull --no-rebase origin main
+
       - name: Collect articles
         run: python collector.py
         env:
@@ -65,11 +68,27 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add articles.csv
+          git config merge.ours.driver true
+
+          git add articles.csv seen_index.db
           if git diff --cached --quiet; then
             echo "변경사항 없음. 커밋 스킵."
           else
             git commit -m "auto: daily update $(date +%Y-%m-%d)"
-            git pull --rebase origin main
+
+            if ! git pull --no-rebase origin main; then
+              echo "merge 충돌 발생 — seen_index.db는 파생 캐시이므로 재생성으로 복구"
+              # 1단계: seen_index.db 충돌을 ours로 강제 해소해 merge를 완료한다
+              # (이 시점의 ours 내용 자체는 신뢰하지 않는다 — 2단계에서 덮어쓴다)
+              git checkout --ours -- seen_index.db
+              git add seen_index.db
+              git commit -m "merge: seen_index.db 충돌 해소 (ours, 이후 재생성)"
+
+              # 2단계: 병합이 끝난 articles.csv로부터 seen_index.db를 통째로 재생성한다
+              python build_seen_index.py
+              git add seen_index.db
+              git diff --cached --quiet || git commit -m "chore: seen_index.db 재생성 (병합 충돌 복구, $(date +%Y-%m-%d))"
+            fi
+
             git push
           fi

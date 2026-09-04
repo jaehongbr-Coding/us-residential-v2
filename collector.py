@@ -8,6 +8,7 @@ import csv
 import hashlib
 import os
 import re
+import sqlite3
 import sys
 import time
 import urllib.parse
@@ -31,6 +32,7 @@ from bs4 import BeautifulSoup
 # ------------------------------------------------------------------
 
 ARTICLES_CSV = "articles.csv"
+SEEN_DB      = "seen_index.db"
 
 CSV_COLUMNS = [
     "article_id", "collected_at", "published_at", "source",
@@ -550,19 +552,47 @@ def _norm_title(t: str) -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 
-def load_existing_keys() -> tuple[set, set]:
-    """(article_id 집합, (정규화제목, 발행일 앞 10자) 집합) 반환.
-    Google News RSS가 같은 기사를 다른 추적 URL로 반환해
+def _title_key(title: str, published_at: str) -> str:
+    return f"{_norm_title(title)}|{published_at[:10]}"
+
+
+def open_seen_index() -> sqlite3.Connection:
+    """seen_index.db 커넥션을 연다. seen_index.db는 articles.csv에서 파생되는
+    캐시다. 손상 시 build_seen_index.py로 재생성한다. 중복 판정 규칙
+    (article_id 일치 OR (정규화제목, 발행일 앞 10자) 일치)은 CSV 전량 로드
+    방식이던 구버전과 완전히 동일하다.
+    파일이 없으면 스키마만 생성한 빈 DB로 시작한다(기존 load_existing_keys()가
+    articles.csv 부재 시 빈 set을 반환하던 동작과 호환)."""
+    conn = sqlite3.connect(SEEN_DB)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS seen (
+            article_id  TEXT PRIMARY KEY,
+            title_key   TEXT NOT NULL,
+            source      TEXT,
+            published   TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_title_key ON seen(title_key)")
+    return conn
+
+
+def is_seen(conn: sqlite3.Connection, article_id: str, title_key: str) -> bool:
+    """Google News RSS가 같은 기사를 다른 추적 URL로 반환해
     article_id(sha256(url)[:12])만으로는 중복이 잡히지 않는 사례 대응."""
-    if not os.path.exists(ARTICLES_CSV):
-        return set(), set()
-    with open(ARTICLES_CSV, encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f)
-        ids, title_keys = set(), set()
-        for row in reader:
-            ids.add(row["article_id"])
-            title_keys.add((_norm_title(row["title"]), row["published_at"][:10]))
-        return ids, title_keys
+    row = conn.execute(
+        "SELECT 1 FROM seen WHERE article_id = ? OR title_key = ? LIMIT 1",
+        (article_id, title_key),
+    ).fetchone()
+    return row is not None
+
+
+def mark_seen(conn: sqlite3.Connection, article: dict) -> None:
+    title_key = _title_key(article["title"], article["published_at"])
+    conn.execute(
+        "INSERT OR IGNORE INTO seen (article_id, title_key, source, published) "
+        "VALUES (?, ?, ?, ?)",
+        (article["article_id"], title_key, article.get("source", ""), article["published_at"]),
+    )
 
 
 # ------------------------------------------------------------------
@@ -586,91 +616,96 @@ def main():
     print(f"=== US Residential Intelligence v2 — Collector ===")
     print(f"시작: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-    existing_ids, existing_title_keys = load_existing_keys()
-    print(f"기존 누적 기사: {len(existing_ids)}건\n")
+    conn = open_seen_index()
+    try:
+        seen_count = conn.execute("SELECT COUNT(*) FROM seen").fetchone()[0]
+        print(f"기존 누적 기사(seen_index): {seen_count}건\n")
 
-    total_fetched = 0
-    total_skipped = 0
-    new_articles  = []
+        total_fetched = 0
+        total_skipped = 0
+        new_articles  = []
 
-    # ------------------------------------------------------------------
-    # STEP 1: Student Housing — Blue Vista 175개 대학 Google News RSS
-    # ------------------------------------------------------------------
-    print(f"[STEP 1] Student Housing 수집 ({len(BLUE_VISTA_UNIVERSITIES)}개 대학)")
-    sh_fetched = 0
-    sh_new     = 0
+        # ------------------------------------------------------------------
+        # STEP 1: Student Housing — Blue Vista 175개 대학 Google News RSS
+        # ------------------------------------------------------------------
+        print(f"[STEP 1] Student Housing 수집 ({len(BLUE_VISTA_UNIVERSITIES)}개 대학)")
+        sh_fetched = 0
+        sh_new     = 0
 
-    for i, univ in enumerate(BLUE_VISTA_UNIVERSITIES, start=1):
-        print(f"  [{i}/{len(BLUE_VISTA_UNIVERSITIES)}] BV#{univ['bv_rank']} {univ['name']}")
-        fetched = fetch_student_housing_feed(univ)
-        sh_fetched += len(fetched)
-        total_fetched += len(fetched)
+        for i, univ in enumerate(BLUE_VISTA_UNIVERSITIES, start=1):
+            print(f"  [{i}/{len(BLUE_VISTA_UNIVERSITIES)}] BV#{univ['bv_rank']} {univ['name']}")
+            fetched = fetch_student_housing_feed(univ)
+            sh_fetched += len(fetched)
+            total_fetched += len(fetched)
 
-        for article in fetched:
-            title_key = (_norm_title(article["title"]), article["published_at"][:10])
-            if article["article_id"] in existing_ids or title_key in existing_title_keys:
-                total_skipped += 1
-            else:
-                existing_ids.add(article["article_id"])
-                existing_title_keys.add(title_key)
-                new_articles.append(article)
-                sh_new += 1
+            for article in fetched:
+                title_key = _title_key(article["title"], article["published_at"])
+                if is_seen(conn, article["article_id"], title_key):
+                    total_skipped += 1
+                else:
+                    mark_seen(conn, article)
+                    new_articles.append(article)
+                    sh_new += 1
 
-        time.sleep(0.5)
+            time.sleep(0.5)
 
-    print(f"\n  → Student Housing 수집: {sh_fetched}건 / 신규: {sh_new}건\n")
+        print(f"\n  → Student Housing 수집: {sh_fetched}건 / 신규: {sh_new}건\n")
 
-    # ------------------------------------------------------------------
-    # STEP 1.5: 기업명 기반 Google News RSS (스폰서·운영사·기관자본)
-    # ------------------------------------------------------------------
-    print(f"[STEP 1.5] Player 수집 ({len(INDUSTRY_PLAYERS)}개사)")
-    player_fetched = 0
-    player_new     = 0
+        # ------------------------------------------------------------------
+        # STEP 1.5: 기업명 기반 Google News RSS (스폰서·운영사·기관자본)
+        # ------------------------------------------------------------------
+        print(f"[STEP 1.5] Player 수집 ({len(INDUSTRY_PLAYERS)}개사)")
+        player_fetched = 0
+        player_new     = 0
 
-    for i, player in enumerate(INDUSTRY_PLAYERS, start=1):
-        print(f"  [{i}/{len(INDUSTRY_PLAYERS)}] T{player['tier']} {player['name']}")
-        fetched = fetch_industry_player_feed(player)
-        player_fetched += len(fetched)
-        total_fetched += len(fetched)
+        for i, player in enumerate(INDUSTRY_PLAYERS, start=1):
+            print(f"  [{i}/{len(INDUSTRY_PLAYERS)}] T{player['tier']} {player['name']}")
+            fetched = fetch_industry_player_feed(player)
+            player_fetched += len(fetched)
+            total_fetched += len(fetched)
 
-        for article in fetched:
-            title_key = (_norm_title(article["title"]), article["published_at"][:10])
-            if article["article_id"] in existing_ids or title_key in existing_title_keys:
-                total_skipped += 1
-            else:
-                existing_ids.add(article["article_id"])
-                existing_title_keys.add(title_key)
-                new_articles.append(article)
-                player_new += 1
+            for article in fetched:
+                title_key = _title_key(article["title"], article["published_at"])
+                if is_seen(conn, article["article_id"], title_key):
+                    total_skipped += 1
+                else:
+                    mark_seen(conn, article)
+                    new_articles.append(article)
+                    player_new += 1
 
-        time.sleep(0.5)
+            time.sleep(0.5)
 
-    print(f"\n  → Player 수집: {player_fetched}건 / 신규: {player_new}건\n")
+        print(f"\n  → Player 수집: {player_fetched}건 / 신규: {player_new}건\n")
 
-    # ------------------------------------------------------------------
-    # STEP 2: 기존 RSS 피드
-    # ------------------------------------------------------------------
-    print(f"[STEP 2] RSS 피드 수집 ({len(RSS_FEEDS)}개 소스)")
-    for feed in RSS_FEEDS:
-        source = feed["source"]
-        url    = feed["url"]
-        sector = feed["sector"]
-        print(f"  수집 중: {source}")
+        # ------------------------------------------------------------------
+        # STEP 2: 기존 RSS 피드
+        # ------------------------------------------------------------------
+        print(f"[STEP 2] RSS 피드 수집 ({len(RSS_FEEDS)}개 소스)")
+        for feed in RSS_FEEDS:
+            source = feed["source"]
+            url    = feed["url"]
+            sector = feed["sector"]
+            print(f"  수집 중: {source}")
 
-        fetched = fetch_feed(source, url, sector)
-        total_fetched += len(fetched)
+            fetched = fetch_feed(source, url, sector)
+            total_fetched += len(fetched)
 
-        for article in fetched:
-            title_key = (_norm_title(article["title"]), article["published_at"][:10])
-            if article["article_id"] in existing_ids or title_key in existing_title_keys:
-                total_skipped += 1
-            else:
-                existing_ids.add(article["article_id"])
-                existing_title_keys.add(title_key)
-                new_articles.append(article)
+            for article in fetched:
+                title_key = _title_key(article["title"], article["published_at"])
+                if is_seen(conn, article["article_id"], title_key):
+                    total_skipped += 1
+                else:
+                    mark_seen(conn, article)
+                    new_articles.append(article)
 
-    if new_articles:
-        save_articles(new_articles)
+        if new_articles:
+            save_articles(new_articles)
+
+        # CSV 저장이 끝난 뒤에만 commit한다 — 반대 순서면 CSV 저장 실패 시
+        # DB에만 기록이 남아 해당 기사를 영영 다시 수집하지 못한다.
+        conn.commit()
+    finally:
+        conn.close()
 
     print(f"\n--- 수집 완료 ---")
     print(f"  전체 수집: {total_fetched}건")
