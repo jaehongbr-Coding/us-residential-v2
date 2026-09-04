@@ -185,6 +185,59 @@ Deal Ledger 검색의 전신이므로 Player 기사가 검색 대상에 남아 �
 좁게(일상 브리핑에서 아카이브 시점 제외). 향후 원장과 브리핑용 작업본을 물리적으로
 분리할 때 이 소스-접두사 기반 분리 규칙이 그 전신이 된다.
 
+**중복 체크가 CSV 전량 로드에서 SQLite 인덱스로 이관됐다 (2026.09)**
+
+collector.py의 중복 판정은 매 실행마다 articles.csv 전체를 메모리에 올리던 방식에서
+`seen_index.db`(SQLite) 조회로 바뀌었다. 판정 규칙(article_id 일치 OR (정규화제목,
+발행일 앞 10자) 일치)은 구버전과 완전히 동일하며, 6,884건 실측 검증에서 100% 일치를
+확인했다.
+
+`seen_index.db`는 **articles.csv에서 파생되는 캐시**다. 원본이 아니다 — 손상되거나
+삭제돼도 `python build_seen_index.py`로 언제든 재생성할 수 있다. articles.csv가
+유일한 원장(source of truth)이라는 원칙은 변하지 않는다.
+
+**CSV 저장 후 DB commit** 순서를 반드시 지킨다. collector.py의 `main()`은
+`save_articles()`가 끝난 뒤에만 `conn.commit()`을 호출하며, 예외 발생 시 try/finally로
+commit 없이 종료된다. 반대 순서(DB commit 먼저)면 CSV 저장 실패 시 DB에만 "이미 봤음"
+기록이 남아 해당 기사를 영영 재수집하지 못하는 실패 모드가 생긴다.
+
+`seen_index.db`는 `.gitattributes`에 `binary merge=ours`로 선언되어 있다. 단, 이는
+순차 실행 중 발생하는 통상적 병합 충돌 회피용이며, **여러 워크플로우 실행이 동시에
+겹쳐 각자 다른 스냅샷으로 독립 판단하는 상황은 막지 못한다** — 그 경우 daily_collect.yml의
+커밋 단계가 병합 실패를 감지하면 `build_seen_index.py`로 articles.csv 기준 전체
+재생성 후 재커밋하는 폴백이 실행된다. 단 이 폴백은 병합이 실제로 일어날 때만
+작동하며, 아래 2026-09-03 사고처럼 두 프로세스가 각자 다른 스냅샷으로 독립
+실행되는 경우는 병합 자체가 발생하지 않으므로 방어되지 않는다.
+
+**articles.csv 정합성 참고 — 알려진 손상 행 1건**: article_id·published_at·source
+필드가 밀려 깨진 행이 정확히 1건 존재한다 (원문 추정: 웨비나 홍보 요약 텍스트 내
+이스케이프되지 않은 따옴표로 인한 CSV 파싱 어긋남). `build_seen_index.py`는 이 행을
+자동으로 skip하며 인덱스에 포함하지 않는다. article_id가 sha256(url)[:12] 형식(12자
+hex)이 아니므로 정상 기사와 충돌할 위험은 없다. articles.csv 정합성 점검 시 이 행을
+참조할 것 — 위치는 build_seen_index.py 실행 시 skip 목록에서 확인 가능하다.
+
+**2026-09-03 article_id 142건 중복 — 원인 미규명, 재발 가능**:
+같은 URL의 기사가 25분 간격 두 daily_collect.yml 실행(23:28:41 / 23:53:48 UTC,
+둘 다 github-actions[bot])에서 각각 신규로 판단되어 두 번 저장됐다.
+
+⚠️ concurrency 그룹(daily-collect, cancel-in-progress: false)이 2026-07-13부터
+이미 존재했음에도 발생했다. 즉 동시 실행 방지 설정으로는 막히지 않는 사고이며,
+SQLite 이관으로도 막히지 않는다. 두 방어선 모두 무력했다.
+
+미확인 가설(다음 사고 시 이 순서로 확인할 것):
+ ① 큐 대기 중인 두 번째 job이 첫 실행의 push 이전 시점 ref를 체크아웃했을 가능성
+ ② concurrency group이 weekly_report.yml과 분리되어 있어 두 워크플로우가
+    각자 그룹으로 동시 실행됐을 가능성 (일요일 21:00 UTC 충돌 = TODO #1)
+ ③ 트리거가 복수(schedule + 외부 cron-job.org 등)여서 서로 다른 이벤트로 발화했을 가능성
+
+이번 조사에서는 gh CLI 부재로 트리거 소스를 확인하지 못했다. 다음 실행 로그에서
+run 시작 시각·트리거 이벤트·체크아웃 SHA를 대조해 판정할 것.
+
+영향 범위: seen_index.db는 article_id가 PRIMARY KEY라 중복 쌍 중 하나만 인덱싱하며,
+재수집 시도는 정상적으로 걸러진다. 따라서 향후 중복 판정 자체에는 문제가 없다.
+articles.csv의 142건 잔여 행 정리는 미해결(TODO). CLAUDE.md TODO #4
+"제목 중복 167행 정리"와는 판정 기준이 다른 별건이다.
+
 ## articles.csv 컬럼 (16개 확정)
 article_id, collected_at, published_at, source, title,
 url, summary, classified, category, event_tags,
@@ -286,6 +339,9 @@ woomi_relevance: CSV 저장만, UI 미노출
 5. index.html korean_summary fallback 한 줄
 6. collector.py _FETCH_SOURCES 확대 (Multifamily Dive 등 5개)
 7. weekly_report.py 모델 claude-sonnet-4-5 → claude-sonnet-4-6
+8. daily_collect.yml 중복 실행 원인 규명 (2026-09-03 142건 사고,
+   concurrency·SQLite 양쪽 모두 무력. 다음 실행 로그로 트리거 소스 확인)
+9. articles.csv 142건 중복 행 정리 (article_id 완전 일치 기준, TODO #4와 별건)
 
 ### 보류 (조건부)
 - weekly_report.py format_articles의 summary[:200] 확대 → 위 6번 완료 후 결정
