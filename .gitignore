@@ -13,6 +13,7 @@ current_batch_id.txt
 
 # articles.csv 직접 수정 스크립트 실행 전 백업
 *.bak
+*.bak*
 
 # Streamlit
 .streamlit/secrets.toml
@@ -22,8 +23,7 @@ current_batch_id.txt
 Thumbs.db
 
 # archive/ 물리 분리 작업 중 생성된 백업 디렉토리
-archive_bak/
-archive_bak2/
+archive_bak*/
 
 # Claude Code 로컬 프로젝트 설정
 .claude/

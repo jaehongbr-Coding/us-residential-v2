@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 21 * * *"  # 한국시간 매일 오전 6시 (UTC 21:00)
   workflow_dispatch:        # 수동 실행
+    inputs:
+      force:
+        description: "중복 실행 가드를 무시하고 강제 실행 (장애 복구·피드 추가 직후 즉시 반영용)"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: daily-collect
@@ -22,29 +28,50 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check duplicate run guard
+        id: guard
+        run: |
+          git fetch origin main
+          TODAY=$(date -u +%Y-%m-%d)
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            echo "[RUN] force=true — 가드 무시하고 강제 실행"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif git log origin/main --format=%s -20 | grep -qF "auto: daily update $TODAY"; then
+            echo "[SKIP] 오늘($TODAY) 수집이 이미 완료됨 — 중복 실행 방지"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "[RUN] 오늘 첫 실행 — 수집 진행"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Python 3.11
+        if: steps.guard.outputs.skip == 'false'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.guard.outputs.skip == 'false'
         run: pip install -r requirements.txt
 
       - name: Pull latest changes
+        if: steps.guard.outputs.skip == 'false'
         run: git pull --no-rebase origin main
 
       - name: Collect articles
+        if: steps.guard.outputs.skip == 'false'
         run: python collector.py
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Classify articles
+        if: steps.guard.outputs.skip == 'false'
         run: python classifier.py
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Cancel batch on workflow cancellation
-        if: cancelled()
+        if: cancelled() && steps.guard.outputs.skip == 'false'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -65,6 +92,7 @@ jobs:
           fi
 
       - name: Commit & push if changed
+        if: steps.guard.outputs.skip == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

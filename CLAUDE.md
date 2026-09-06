@@ -324,7 +324,7 @@ commit 없이 종료된다. 반대 순서(DB commit 먼저)면 CSV 저장 실패
 hex)이 아니므로 정상 기사와 충돌할 위험은 없다. articles.csv 정합성 점검 시 이 행을
 참조할 것 — 위치는 build_seen_index.py 실행 시 skip 목록에서 확인 가능하다.
 
-**2026-09-03 article_id 142건 중복 — 원인 미규명, 재발 가능**:
+**2026-09-03 article_id 142건 중복 — 원인 규명 완료 (2026.09), 트리거 정리는 관찰 중**:
 같은 URL의 기사가 25분 간격 두 daily_collect.yml 실행(23:28:41 / 23:53:48 UTC,
 둘 다 github-actions[bot])에서 각각 신규로 판단되어 두 번 저장됐다.
 
@@ -332,18 +332,57 @@ hex)이 아니므로 정상 기사와 충돌할 위험은 없다. articles.csv �
 이미 존재했음에도 발생했다. 즉 동시 실행 방지 설정으로는 막히지 않는 사고이며,
 SQLite 이관으로도 막히지 않는다. 두 방어선 모두 무력했다.
 
-미확인 가설(다음 사고 시 이 순서로 확인할 것):
- ① 큐 대기 중인 두 번째 job이 첫 실행의 push 이전 시점 ref를 체크아웃했을 가능성
- ② concurrency group이 weekly_report.yml과 분리되어 있어 두 워크플로우가
-    각자 그룹으로 동시 실행됐을 가능성 (일요일 21:00 UTC 충돌 = TODO #1)
- ③ 트리거가 복수(schedule + 외부 cron-job.org 등)여서 서로 다른 이벤트로 발화했을 가능성
+**원인**: GitHub REST API 실행 로그(`actions/workflows/daily_collect.yml/runs`)
+확인 결과, 09-03은 1회성 사고가 아니라 최소 08-21부터 거의 매일 반복되는 상시
+패턴이었다. 매일 `event=workflow_dispatch`가 21:00:26~28초(초 단위 고정)에,
+이어서 `event=schedule`이 지연 발화(관측 범위 21:25~23:53, 예: 09-03
+21:00:28→23:53 / 09-06 21:00:26→22:36)로 각각 별도로 돈다. workflow_dispatch의
+actor는 github-actions[bot]이 아니라 **저장소 소유자 계정** — PAT 기반 외부
+API 호출이었다.
 
-이번 조사에서는 gh CLI 부재로 트리거 소스를 확인하지 못했다. 다음 실행 로그에서
-run 시작 시각·트리거 이벤트·체크아웃 SHA를 대조해 판정할 것.
+**경위**: 2026.06 GitHub Actions schedule 신뢰성 문제로 cron-job.org
+"us-residential-v2 daily" 잡(매일 06:00 KST, REST API dispatches 호출)을
+붙였다(개발 이력 참조). 이후 워크플로우에 schedule 트리거를 다시 추가하면서
+외부 크론을 끄지 않아 두 트리거가 병존하게 된 것이 원인이다.
+
+**조치 상태 (두 갈래로 진행)**:
+1. 근본 원인 제거 (진행 중, 저장소 밖 — 사용자 계정 측 조치): cron-job.org
+   "us-residential-v2 daily" 잡을 삭제하지 않고 **비활성화**한 채 1주일간
+   GitHub 자체 schedule 단독 동작을 관찰 중. schedule이 매일 정상 발화하면
+   크론 잡을 삭제하고, 빠지는 날이 있으면 크론 잡을 되살리는 대신 워크플로우의
+   schedule 트리거를 제거한다. 어느 쪽이든 최종적으로 **트리거는 하나만
+   남긴다**.
+2. 방어선 (완료, 2026.09): daily_collect.yml에 중복 실행 가드 추가.
+   origin/main 최근 20개 커밋 메시지에 오늘(UTC) 날짜의
+   "auto: daily update" 커밋이 이미 있으면 collector.py/classifier.py/
+   commit/push를 전부 스킵한다. workflow_dispatch의 `force: true` 입력으로
+   가드를 우회해 수동 재실행(장애 복구·피드 추가 직후 즉시 반영)할 수 있다.
+   **트리거 정리가 끝나 1번이 완료돼도 이 가드는 유지한다** — 향후 어떤
+   이유로든 이중 발화가 재발했을 때 API 비용과 중복 저장을 막는 영구
+   방어선이기 때문이다.
+
+**비용 실측 근거** (2차 실행이 실제로 건진 신규 기사 수):
+
+| 날짜 | 신규 기사 |
+|---|---|
+| 09-01 | 21건 |
+| 09-02 | 22건 |
+| 09-03 | 46건 (142건 사고 당일 — 정리 전 수치라 부풀려짐) |
+| 09-04 | 20건 |
+| 09-05 | 7건 |
+| 09-06 | 2건 |
+
+2차 실행은 매번 collector.py 전체(대학 175+기업 38+RSS)와 classifier.py
+Batch API를 처음부터 다시 돌리면서, 최근에는 2~7건만 추가로 건진다 — API
+비용은 매일 거의 2배로 나가는데 실익은 갈수록 줄어든다는 뜻이며, 이것이
+가드 도입의 직접적 근거다. **4섹터·지역 축 확장 착수 전 반드시 해결해야
+하는 선결 과제다** — 실행 시간이 늘어 두 트리거 간격이 좁아지면(09-03처럼)
+겹침이 재발해 중복 저장으로 이어질 수 있고, 확장 후 실행 시간이 몇 배가
+되면 매일 겹칠 것이 확실하기 때문이다.
 
 영향 범위: seen_index.db는 article_id가 PRIMARY KEY라 중복 쌍 중 하나만 인덱싱하며,
 재수집 시도는 정상적으로 걸러진다. 따라서 향후 중복 판정 자체에는 문제가 없다.
-articles.csv의 142건 잔여 행 정리는 미해결(TODO). CLAUDE.md TODO #4
+articles.csv의 142건 잔여 행 정리는 TODO #9에서 완료됨. CLAUDE.md TODO #4
 "제목 중복 167행 정리"와는 판정 기준이 다른 별건이다.
 
 ## articles.csv 컬럼 (16개 확정)
@@ -388,6 +427,10 @@ woomi_relevance: CSV 저장만, UI 미노출
 - Windows UTF-8 인코딩 처리 완료 (sys.stdout.reconfigure)
 - python-dotenv 적용 완료 (.env 자동 로드)
 - GitHub Actions 매일 오전 6시(KST) 자동 수집·분류 설정 완료
+- cron-job.org 외부 스케줄러로 daily_collect.yml workflow_dispatch를 매일
+  06:00 KST에 호출하도록 연동 완료 (2026.06, GitHub Actions schedule
+  신뢰성 문제 대응) — ⚠️ 이후 워크플로우에 schedule 트리거를 다시 추가하면서
+  이 외부 크론을 끄지 않아 트리거가 병존하게 됨 (TODO #8, 2026.09 원인 규명)
 - Streamlit 대시보드 Student Housing 모니터 섹션 추가 완료
 - LinkColumn으로 원문 링크 클릭 가능하도록 수정 완료
 - 핵심 모니터링 리브랜딩 (⭐ 우미 관련 높음 → 🎯 핵심 모니터링)
@@ -447,8 +490,13 @@ woomi_relevance: CSV 저장만, UI 미노출
 5. index.html korean_summary fallback 한 줄
 6. collector.py _FETCH_SOURCES 확대 (Multifamily Dive 등 5개)
 7. weekly_report.py 모델 claude-sonnet-4-5 → claude-sonnet-4-6
-8. daily_collect.yml 중복 실행 원인 규명 (2026-09-03 142건 사고,
-   concurrency·SQLite 양쪽 모두 무력. 다음 실행 로그로 트리거 소스 확인)
+8. 🟡 부분 해결 (2026.09) — daily_collect.yml 상시 이중 실행. 원인은
+   cron-job.org 외부 스케줄러(2026.06 도입)와 워크플로우 자체 schedule
+   트리거의 병존으로 규명됨. 방어선(중복 실행 가드, force 입력으로 우회 가능)은
+   이번 작업으로 추가 완료. 트리거를 하나로 줄이는 근본 정리는 cron-job.org
+   잡을 비활성화한 채 1주일 관찰 중 — 관찰 종료 후 크론 삭제 또는 워크플로우
+   schedule 제거로 최종 정리 예정. 자세한 내용은 위 "2026-09-03 article_id
+   142건 중복" 절 참조
 9. ✅ 완료 (2026.09) — articles.csv/archive의 article_id 완전 중복 정리.
    142건 중 119건(collected_at만 다른 안전한 쌍) 정리, 23건은 title/summary/source가
    달라 제외(removed_duplicates.log 참조). TODO #4(제목 유사도 기준 167행)와는
