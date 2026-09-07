@@ -237,3 +237,30 @@ articles.csv	02be527a6cb4	removed	collected_at=2026-09-03 23:33:01
 articles.csv	847d8c607407	removed	collected_at=2026-09-03 23:33:02
 articles.csv	99c4ef996016	removed	collected_at=2026-09-03 23:33:02
 articles.csv	0a58a6ece8f5	removed	collected_at=2026-09-03 23:33:02
+
+# --- dedupe_remaining_23.py 실행분 (23건 잔여 중복 정리) ---
+archive/2026-06.csv	26ca3af74fe2	removed	rule=A	collected_at=2026-09-03 23:32:32	source=Player — JLL	kept_collected_at=2026-09-03 21:04:11	note=최초 collected_at 유지
+archive/2026-07.csv	573cb29a9868	removed	rule=A	collected_at=2026-09-03 23:31:41	source=Student Housing — University of Southern Mississippi (MS)	kept_collected_at=2026-09-03 21:03:21	note=최초 collected_at 유지
+archive/2026-07.csv	2a3ab9a0ae36	removed	rule=A	collected_at=2026-09-03 23:32:30	source=Player — Walker & Dunlop	kept_collected_at=2026-09-03 21:04:09	note=최초 collected_at 유지
+archive/2026-07.csv	7c1e66e3c245	removed	rule=A	collected_at=2026-09-03 23:32:30	source=Player — Walker & Dunlop	kept_collected_at=2026-09-03 21:04:09	note=최초 collected_at 유지
+archive/2026-08.csv	c4465b1e576a	removed	rule=A	collected_at=2026-09-03 23:29:35	source=Student Housing — Purdue University (IN)	kept_collected_at=2026-09-03 21:01:16	note=최초 collected_at 유지
+archive/2026-08.csv	a3f7440eb6bb	removed	rule=A	collected_at=2026-09-03 23:29:46	source=Student Housing — Florida State University (FL)	kept_collected_at=2026-09-03 21:01:27	note=최초 collected_at 유지
+archive/2026-08.csv	1b98b8216dac	removed	rule=A	collected_at=2026-09-03 23:32:19	source=Player — Greystar	kept_collected_at=2026-09-03 21:03:58	note=최초 collected_at 유지
+archive/2026-08.csv	f23f9bf82023	removed	rule=A	collected_at=2026-09-03 23:32:21	source=Player — Hawkins Way Capital	kept_collected_at=2026-09-03 21:04:00	note=최초 collected_at 유지
+archive/2026-08.csv	7639b49a52a5	removed	rule=A	collected_at=2026-09-03 23:32:21	source=Player — Hawkins Way Capital	kept_collected_at=2026-09-03 21:04:00	note=최초 collected_at 유지
+archive/2026-08.csv	83c4f97fb9f3	removed	rule=A	collected_at=2026-09-03 23:32:22	source=Player — Affinius Capital	kept_collected_at=2026-09-03 21:04:01	note=최초 collected_at 유지
+archive/2026-09.csv	4aa03452266e	removed	rule=C	collected_at=2026-09-03 21:04:18	source=Multifamily Executive	kept_collected_at=2026-09-03 23:32:42	note=손상 행 제외, 늦은(깨끗한) collected_at 유지
+archive/2026-09.csv	20da515a8c91	removed	rule=A	collected_at=2026-09-03 23:29:26	source=Student Housing — Stony Brook University (NY)	kept_collected_at=2026-09-03 21:01:08	note=최초 collected_at 유지
+archive/2026-09.csv	1e0e1b564001	removed	rule=A	collected_at=2026-09-03 23:29:28	source=Student Housing — Columbia University (NY)	kept_collected_at=2026-09-03 21:01:10	note=최초 collected_at 유지
+archive/2026-09.csv	7e358b17ad28	removed	rule=A	collected_at=2026-09-03 23:29:47	source=Student Housing — Auburn University (AL)	kept_collected_at=2026-09-03 21:01:28	note=최초 collected_at 유지
+archive/2026-09.csv	d2781c2cba59	removed	rule=A	collected_at=2026-09-03 23:30:38	source=Student Housing — California State University - Fullerton (CA)	kept_collected_at=2026-09-03 21:02:19	note=최초 collected_at 유지
+archive/2026-09.csv	402afff7f825	removed	rule=A	collected_at=2026-09-03 23:30:46	source=Student Housing — Texas State University (TX)	kept_collected_at=2026-09-03 21:02:26	note=최초 collected_at 유지
+archive/2026-09.csv	c70a5edf6d19	removed	rule=A	collected_at=2026-09-03 23:30:54	source=Student Housing — University of California - Berkeley (CA)	kept_collected_at=2026-09-03 21:02:35	note=최초 collected_at 유지
+archive/2026-09.csv	48347709935f	removed	rule=A	collected_at=2026-09-03 23:30:54	source=Student Housing — University of California - Berkeley (CA)	kept_collected_at=2026-09-03 21:02:35	note=최초 collected_at 유지
+archive/2026-09.csv	779b11912a65	removed	rule=A	collected_at=2026-09-03 23:31:35	source=Student Housing — George Washington University (DC)	kept_collected_at=2026-09-03 21:03:15	note=최초 collected_at 유지
+archive/2026-09.csv	90959bb31bf2	removed	rule=A	collected_at=2026-09-03 23:32:17	source=Player — Up Campus	kept_collected_at=2026-09-03 21:03:56	note=최초 collected_at 유지
+archive/2026-09.csv	397d78a88eca	removed	rule=B	collected_at=2026-09-03 21:04:22	source=Connect CRE	kept_collected_at=2026-09-03 23:32:48	note=지역판 source 유지: 'Connect CRE Texas'
+archive/2026-09.csv	91cac39586d6	removed	rule=B	collected_at=2026-09-03 21:04:22	source=Connect CRE	kept_collected_at=2026-09-03 23:32:49	note=지역판 source 유지: 'Connect CRE Texas'
+archive/2026-09.csv	44f65d096ea9	removed	rule=B	collected_at=2026-09-03 23:32:46	source=Connect CRE	kept_collected_at=2026-09-03 21:04:26	note=지역판 source 유지: 'Connect CRE California'
+articles.csv	397d78a88eca	updated	rule=B	before_source='Connect CRE'	after_source='Connect CRE Texas'	note=지역판 source 유지: 'Connect CRE Texas'
+articles.csv	91cac39586d6	updated	rule=B	before_source='Connect CRE'	after_source='Connect CRE Texas'	note=지역판 source 유지: 'Connect CRE Texas'
