@@ -191,12 +191,24 @@ university_abbreviations:
   # 제외했다. "UGA"(University of Georgia 통칭)처럼 기계적 첫글자 조합으로는
   # 나오지 않는 실제 통칭은 이 방식으로 못 만든다 — 수작업 추가는 I8 위반이라
   # 하지 않았다. 전체 채택/제외 목록은 커밋 로그 및 작업 보고 참조.
+  #
+  # ⚠️ 2026.09 Phase 2.5 2차(백필 검증)에서 발견한 방법론 결함: 위 충돌
+  # 검사는 "당시 코드가 있던 154개" 안에서만 겹치는지 봤다 — 그래서 미해결
+  # 21건(당시 코드 없음)과만 겹치는 경우를 놓쳤다. 백필 후 실제 데이터로
+  # 4건이 걸렸다: CSUF(California State-Fresno ↔ 당시 미해결이던 -Fullerton),
+  # ISU(Iowa State ↔ 미해결이던 Illinois State), KSU(Kansas State ↔ 미해결
+  # 이던 Kennesaw State **및** Kent State, 3파전), PSU(Portland State ↔
+  # 미해결이던 Pennsylvania State) — 전부 원장 실측(Kennesaw State 기사 4건,
+  # California State-Fullerton 기사 1건, Penn State 관련 1건)에서 오판정을
+  # 확인하고 제거했다. 교훈: 약칭 충돌 검사는 "코드가 있는 대학"이 아니라
+  # BLUE_VISTA_UNIVERSITIES 175개 전체를 대상으로 해야 한다 — 미해결 대학도
+  # 나중에 코드가 생기거나, 코드 없이도 그 이름 자체가 다른 대학의 약칭과
+  # 실제로 충돌할 수 있다.
   "BUSUNY": "13780"
   "BYU": "39340"
   "CCU": "34820"
   "CMU": "34380"
   "CSUC": "17020"
-  "CSUF": "23420"
   "CSULA": "31080"
   "CSUS": "40900"
   "CSUSB": "40140"
@@ -208,10 +220,8 @@ university_abbreviations:
   "FSU": "45220"
   "GIT": "12060"
   "GWU": "47900"
-  "ISU": "11180"
   "IUPUI": "26900"
   "JMU": "25500"
-  "KSU": "31740"
   "LSU": "12940"
   "MIT": "14460"
   "MSUM": "31860"
@@ -222,7 +232,6 @@ university_abbreviations:
   "NMSU": "29740"
   "NYU": "35620"
   "ODU": "47260"
-  "PSU": "38900"
   "RIT": "40380"
   "SCAD": "42340"
   "SDSU": "41740"
@@ -270,6 +279,47 @@ university_abbreviations:
   "WVU": "34060"
   "WWU": "13380"
 
+university_colloquial:
+  # 2026.09 Phase 2.5 2차: 백필 검증에서 geo 0건이던 대학 22곳의 stage_a_json
+  # 실측 추출 문자열을 집계해 채택했다(추측이 아니라 실제 Stage A 출력에서
+  # 나온 문자열만). university_abbreviations(기계적 첫글자 조합)와 다른
+  # 세 번째 패턴 — "Emory"(University 생략), "UMass"/"UMass Amherst"(포트맨토,
+  # 첫글자 조합 불가), "UC Davis"(접두사+캠퍼스명) 같은 구어체 통칭이다.
+  #
+  # ⚠️ 충돌 검사는 BLUE_VISTA_UNIVERSITIES 175개에 대해서만 수행했다. 175개는
+  # 우리 수집 축일 뿐 기사가 언급할 수 있는 대상의 전체 집합이 아니다 — 175개
+  # 안에서 충돌이 없어도 폐집합 밖에서 흔히 쓰이는 통칭이면 채택하지 않는다.
+  # 이 원칙으로 두 후보를 제외했다:
+  #   - "UofM"(University of Memphis 기사에서 추출): 전국적으로 University of
+  #     Michigan/Minnesota를 가리키는 데도 흔히 쓰인다.
+  #   - "University of Hawaii"(bare, "at Manoa" 없이): 우리 목록엔 Manoa뿐이라
+  #     충돌이 없지만, 실제 UH 시스템에는 Hilo(별도 CBSA)·West Oahu가 있다.
+  #     "UH Manoa"만 채택.
+  #   - "UW"(Washington State University 기사에서 추출): University of
+  #     Washington(시애틀, 이미 이 파일에 등재됨)의 흔한 약칭과 충돌 — Stage A
+  #     추출 오류로 의심되며, 채택 시 진짜 UW 기사가 오판정될 위험.
+  # "<주 이름> State"(예: "Oklahoma State") 6건은 실제로 주 정부를 가리킬
+  # 위험(예: "Oklahoma state legislature")을 원장 전체(14건 발견) 대상으로
+  # 검증했다 — 전부 해당 대학 SH 피드 출처+캠퍼스 맥락이었다(주 정부 오탐 0건).
+  "Virginia Tech": "13980"
+  "Oklahoma State": "44660"
+  "UC Irvine": "31080"
+  "Iowa State": "11180"
+  "UMass Amherst": "11200"
+  "UMass": "11200"
+  "Emory": "12060"
+  "Notre Dame": "43780"
+  "Chico State": "17020"
+  "Drexel": "37980"
+  "UH Manoa": "46520"
+  "Georgia Tech": "12060"
+  "GA Tech": "12060"
+  "Sam Houston State": "26660"
+  "Cal State San Bernardino": "40140"
+  "Wayne State": "19820"
+  "UToledo": "45780"
+  "Cleveland State": "17410"
+
 legacy_titles:
   # 구 vintage 명칭 -> 현행 코드 (research.md §4.2)
   "Atlanta-Sandy Springs-Alpharetta": "12060"
@@ -283,6 +333,26 @@ submarkets:
   "Sandy Springs": "12060"
   "Alpharetta": "12060"
   "Marietta": "12060"
+
+  # 2026.09 Phase 2.5: 뉴욕시 5개 자치구. 추정이 아니라 Census 정의상 사실 —
+  # 각각 County/County Equivalent와 1:1 대응하고(Manhattan=New York County,
+  # Brooklyn=Kings County, Staten Island=Richmond County, Queens/Bronx는
+  # county명과 동일) 전부 35620(New York-Newark-Jersey City, NY-NJ) CBSA에
+  # 속함을 crosswalk의 county_idx로 검증했다(kings|NY/richmond|NY/new york|NY/
+  # queens|NY/bronx|NY 전부 35620). 서브마켓(Harlem/Midtown 등)은 이번 라운드에
+  # 넣지 않는다 — Midtown은 Atlanta에도 있고 Downtown은 전국에 있어 동명 충돌
+  # 위험이 자치구와 다르다.
+  # ⚠️ Queens/Bronx는 사실 county_idx로 주(state)가 주어지면 이미 정상 동작했다
+  # (county명 자체가 "Queens"/"Bronx"라서). 여기 추가하는 건 주가 없을 때도
+  # 되게 하려는 것 — geo_resolver의 우선순위 변경(주 명시 시 city/county 정확
+  # 매칭이 이 alias보다 먼저 적용됨)과 맞물려, "Manhattan, KS"처럼 주가 명시된
+  # 실제 다른 지명과는 절대 충돌하지 않는다(회귀 테스트로 고정).
+  "Manhattan": "35620"
+  "Brooklyn": "35620"
+  "Queens": "35620"
+  "Bronx": "35620"
+  "The Bronx": "35620"
+  "Staten Island": "35620"
 
 colloquial:
   "Metro Atlanta": "12060"

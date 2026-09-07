@@ -220,3 +220,63 @@ def test_discarded_abbreviations_are_not_in_alias(abbr):
     out = resolve([{"name": abbr, "state": None, "type": "university", "primary": True}], "local")
     assert out["geo_confidence"] != "exact"
     assert out["geo_confidence"] != "inferred"
+
+
+# --- Phase 2.5 2차: 백필 검증에서 발견한 뉴욕 자치구 + 대학 구어체 축약 ---
+
+def test_manhattan_without_state_resolves_to_nyc():
+    """뉴욕 자치구 alias 추가 확인 — 실제 백필에서 116건이 Manhattan, KS로
+    오판정됐던 것을 바로잡는다."""
+    out = resolve([{"name": "Manhattan", "state": None, "type": "city", "primary": True}], "local")
+    assert out["geo_cbsa_code"] == "35620"
+
+
+def test_manhattan_with_kansas_state_wins_over_nyc_alias():
+    """⚠️ 회귀 가드 — 이번 작업에서 가장 중요한 테스트: state="KS"가 명시되면
+    alias(뉴욕)보다 실제 city_idx의 Manhattan, KS가 이겨야 한다. 그렇지 않으면
+    Kansas State University 관련 기사가 전부 뉴욕으로 오판정된다.
+    geo_resolver의 순서를 "주 명시 시 city/county 정확매칭 -> alias"로
+    바꿔서 해결했다 — 원안(alias 최우선)이었다면 이 테스트가 실패한다."""
+    out = resolve([{"name": "Manhattan", "state": "KS", "type": "city", "primary": True}], "local")
+    assert out["geo_cbsa_code"] == "31740"
+    assert out["geo_confidence"] == "exact"
+
+
+@pytest.mark.parametrize("borough,code", [
+    ("Brooklyn", "35620"), ("Queens", "35620"), ("Bronx", "35620"),
+    ("The Bronx", "35620"), ("Staten Island", "35620"),
+])
+def test_nyc_boroughs_resolve_to_nyc_metro(borough, code):
+    out = resolve([{"name": borough, "state": None, "type": "city", "primary": True}], "local")
+    assert out["geo_cbsa_code"] == code
+
+
+@pytest.mark.parametrize("name,code", [
+    ("Emory", "12060"), ("Notre Dame", "43780"), ("UMass Amherst", "11200"),
+])
+def test_university_colloquial_names_resolve(name, code):
+    """작업 2에서 채택된 대학 구어체 축약 alias 샘플 검증."""
+    out = resolve([{"name": name, "state": None, "type": "university", "primary": True}], "local")
+    assert out["geo_cbsa_code"] == code
+
+
+@pytest.mark.parametrize("name", ["UofM", "University of Hawaii", "UW"])
+def test_rejected_university_colloquial_candidates_not_in_alias(name):
+    """폐집합(BLUE_VISTA_UNIVERSITIES 175개) 밖의 위험 때문에 제외한 후보들.
+    UofM(Michigan/Minnesota와 전국적으로 혼용), University of Hawaii(bare —
+    Hilo/West Oahu 등 다른 캠퍼스 존재), UW(University of Washington의 흔한
+    약칭과 충돌, Washington State 기사에서 추출된 것은 Stage A 오류로 의심)."""
+    out = resolve([{"name": name, "state": None, "type": "university", "primary": True}], "local")
+    assert out["geo_confidence"] not in ("exact", "inferred")
+
+
+@pytest.mark.parametrize("abbr", ["CSUF", "ISU", "KSU", "PSU"])
+def test_abbreviations_removed_after_175_way_collision_check(abbr):
+    """⚠️ 회귀 가드: 이 4개는 애초에 university_abbreviations에 있었으나,
+    "코드가 있는 154개"만 대상으로 한 충돌 검사가 "코드가 없던 미해결 21건"과의
+    충돌(CSUF=Fresno/Fullerton, ISU=Iowa State/Illinois State,
+    KSU=Kansas State/Kennesaw State/Kent State, PSU=Portland State/
+    Pennsylvania State)을 놓쳐서 실제 백필 데이터에 오판정 6건이 났다
+    (2026.09 Phase 2.5 2차). 제거 후 재발 방지 — 되살아나면 이 테스트가 실패한다."""
+    out = resolve([{"name": abbr, "state": None, "type": "university", "primary": True}], "local")
+    assert out["geo_confidence"] not in ("exact", "inferred")

@@ -58,17 +58,24 @@ def _lookup_one(name: str, state: str | None) -> tuple[list[str], str, list[str]
             return codes_set, "inferred", codes_set
         return [], "ambiguous", codes_set   # Milwaukee냐 Madison이냐 — 추정 금지 (I8)
 
-    # 1) 수작업 alias — 최우선. 지명(구명칭·서브마켓·통칭)
-    hit = xw["alias_idx"].get(n)
-    if hit:
-        return [hit], ("exact" if st else "inferred"), [hit]
-
-    # 2) (도시, 주) 정확 매칭
+    # 1) (도시, 주) 정확 매칭 — 주가 주어졌으면 수작업 alias보다 먼저 확인한다.
+    #    ⚠️ 2026.09 Phase 2.5: 뉴욕 자치구 alias("Manhattan"->35620) 추가를
+    #    준비하며 발견한 순서 문제. "Manhattan"은 alias로 보면 뉴욕이지만
+    #    city_idx에는 "Manhattan, KS"(Kansas State University 소재)도 실존한다.
+    #    alias를 먼저 보면(원안의 순서) state="KS"가 명시된 기사까지 alias가
+    #    무조건 뉴욕으로 덮어써 버린다 — Columbia/Miami/Glendale과 같은 계열의
+    #    "후보가 있는데 다른 걸 확정" 오류를 새로 만드는 셈이다. 이제 주가
+    #    주어지면 그 주의 실제 city/county 매칭을 alias보다 먼저 신뢰한다.
     if st:
         for idx in ("city_idx", "county_idx"):
             hit = xw[idx].get(f"{n}|{st}")
             if hit:
                 return hit[:1], "exact", hit[:1]
+
+    # 2) 수작업 alias — 지명(구명칭·서브마켓·통칭·뉴욕 자치구)
+    hit = xw["alias_idx"].get(n)
+    if hit:
+        return [hit], ("exact" if st else "inferred"), [hit]
 
     # 3) 주가 주어졌을 때만: CBSA 타이틀에서 그 주를 가진 것 우선 채택
     if st:

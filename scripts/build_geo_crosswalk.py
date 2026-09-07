@@ -169,11 +169,12 @@ def build():
             if base != norm_university(name):
                 university_base_idx.setdefault(base, []).append(code)
 
-        for abbr, code in (aliases.get("university_abbreviations") or {}).items():
-            code = str(code).strip()
-            if not code:
-                continue
-            university_idx[norm_university(abbr)] = code.zfill(5)
+        for section in ("university_abbreviations", "university_colloquial"):
+            for abbr, code in (aliases.get(section) or {}).items():
+                code = str(code).strip()
+                if not code:
+                    continue
+                university_idx[norm_university(abbr)] = code.zfill(5)
 
         for section in ("legacy_titles", "submarkets", "colloquial"):
             for alias, code in (aliases.get(section) or {}).items():
