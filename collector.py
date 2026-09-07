@@ -96,6 +96,11 @@ RSS_FEEDS = [
     #   URL 재조사 필요.
     # {"source": "California YIMBY",        "url": "https://californiayimby.com/feed",                            "sector": "Policy"},
     {"source": "SF YIMBY",                "url": "https://sfyimby.com/feed",                                    "sector": "Policy"},
+    # 2026.09 Active Adult 축 신설과 함께 추가 — 실제 요청해 200/RSS 파싱
+    # 확인 후 등재(추측 등재 금지 원칙). SH(시니어하우징) 전반을 다루므로
+    # Active Adult 외 assisted living 등도 들어오나 원장 원칙상 걸러내지 않는다.
+    {"source": "Senior Housing News",     "url": "https://seniorhousingnews.com/feed/",                          "sector": "Senior Housing"},
+    {"source": "Seniors Housing Business", "url": "https://seniorshousingbusiness.com/feed/",                    "sector": "Senior Housing"},
 ]
 
 BLUE_VISTA_UNIVERSITIES = [
@@ -280,50 +285,100 @@ INDUSTRY_PLAYERS = [
     # Tier 1 — 진행 중인 Mizzou PBSH 딜 직접 관계자 (쿼리를 SH로 한정하지 않고 넓게 잡는다)
     # lookback_days=730: 2026-09 진단 결과 사모 운용사 특유의 낮은 뉴스 빈도 대비
     # 90일 창이 구조적으로 안 맞음을 확인 (CLAUDE.md "수집 구조 정정" 절 참조)
-    {"name": "Blue Vista Capital Management", "query": '"Blue Vista Capital Management"',   "tier": 1, "lookback_days": 730},
-    {"name": "PeakMade Real Estate",          "query": '"PeakMade"',                        "tier": 1, "lookback_days": 730},
-    {"name": "Ascentris",                     "query": '"Ascentris"',                       "tier": 1, "lookback_days": 730},
-    {"name": "The Dinerstein Companies",      "query": '"The Dinerstein Companies"',        "tier": 1, "lookback_days": 730},
+    {"name": "Blue Vista Capital Management", "query": '"Blue Vista Capital Management"',   "tier": 1, "lookback_days": 730, "sector": "Student Housing"},
+    {"name": "PeakMade Real Estate",          "query": '"PeakMade"',                        "tier": 1, "lookback_days": 730, "sector": "Student Housing"},
+    {"name": "Ascentris",                     "query": '"Ascentris"',                       "tier": 1, "lookback_days": 730, "sector": "Student Housing"},
+    {"name": "The Dinerstein Companies",      "query": '"The Dinerstein Companies"',        "tier": 1, "lookback_days": 730, "sector": "Student Housing"},
 
     # Tier 2 — SH 전업 개발사·운영사
-    {"name": "The Scion Group",               "query": '"The Scion Group" student housing', "tier": 2, "lookback_days": 365},
-    {"name": "Landmark Properties",           "query": '"Landmark Properties" student housing', "tier": 2, "lookback_days": 365},
-    {"name": "Core Spaces",                   "query": '"Core Spaces" student housing',     "tier": 2, "lookback_days": 365},
-    {"name": "Cardinal Group",                "query": '"Cardinal Group" student housing',  "tier": 2, "lookback_days": 365},
-    {"name": "Campus Advantage",              "query": '"Campus Advantage" student housing', "tier": 2, "lookback_days": 365},
-    {"name": "The Preiss Company",            "query": '"The Preiss Company" student housing', "tier": 2, "lookback_days": 365},
-    {"name": "Coastal Ridge Real Estate",     "query": '"Coastal Ridge Real Estate" student housing', "tier": 2, "lookback_days": 365},
-    {"name": "Student Quarters",              "query": '"Student Quarters" student housing', "tier": 2, "lookback_days": 365},
-    {"name": "Article Student Living",        "query": '"Article Student Living" student housing', "tier": 2, "lookback_days": 365},
-    {"name": "Campus Apartments",             "query": '"Campus Apartments" student housing', "tier": 2, "lookback_days": 365},
-    {"name": "CA Ventures",                   "query": '"CA Ventures" student housing',     "tier": 2, "lookback_days": 365},
-    {"name": "Asset Living",                  "query": '"Asset Living" student housing',    "tier": 2, "lookback_days": 365},
-    {"name": "Subtext",                       "query": '"Subtext" student housing',         "tier": 2, "lookback_days": 365},
-    {"name": "LV Collective",                 "query": '"LV Collective" student housing',   "tier": 2, "lookback_days": 365},
-    {"name": "Up Campus",                     "query": '"Up Campus" student housing',       "tier": 2, "lookback_days": 365},
-    {"name": "Fountain Residential Partners", "query": '"Fountain Residential Partners" student housing', "tier": 2, "lookback_days": 365},
-    {"name": "Servitas",                      "query": '"Servitas" student housing',        "tier": 2, "lookback_days": 365},
-    {"name": "Greystar",                      "query": '"Greystar" student housing',        "tier": 2, "lookback_days": 365},
+    {"name": "The Scion Group",               "query": '"The Scion Group" student housing', "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Landmark Properties",           "query": '"Landmark Properties" student housing', "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Core Spaces",                   "query": '"Core Spaces" student housing',     "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Cardinal Group",                "query": '"Cardinal Group" student housing',  "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Campus Advantage",              "query": '"Campus Advantage" student housing', "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "The Preiss Company",            "query": '"The Preiss Company" student housing', "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Coastal Ridge Real Estate",     "query": '"Coastal Ridge Real Estate" student housing', "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Student Quarters",              "query": '"Student Quarters" student housing', "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Article Student Living",        "query": '"Article Student Living" student housing', "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Campus Apartments",             "query": '"Campus Apartments" student housing', "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "CA Ventures",                   "query": '"CA Ventures" student housing',     "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Asset Living",                  "query": '"Asset Living" student housing',    "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Subtext",                       "query": '"Subtext" student housing',         "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "LV Collective",                 "query": '"LV Collective" student housing',   "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Up Campus",                     "query": '"Up Campus" student housing',       "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Fountain Residential Partners", "query": '"Fountain Residential Partners" student housing', "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Servitas",                      "query": '"Servitas" student housing',        "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Greystar",                      "query": '"Greystar" student housing',        "tier": 2, "lookback_days": 365, "sector": "Student Housing"},
 
     # Tier 3 — SH에 자본을 집행하는 기관
-    {"name": "Harrison Street",               "query": '"Harrison Street" student housing', "tier": 3, "lookback_days": 365},
-    {"name": "Hawkins Way Capital",           "query": '"Hawkins Way Capital" student housing', "tier": 3, "lookback_days": 365},
-    {"name": "Affinius Capital",              "query": '"Affinius Capital" student housing', "tier": 3, "lookback_days": 365},
-    {"name": "PCCP",                          "query": '"PCCP" student housing',            "tier": 3, "lookback_days": 365},
-    {"name": "QuadReal",                      "query": '"QuadReal" student housing',        "tier": 3, "lookback_days": 365},
-    {"name": "Nuveen",                        "query": '"Nuveen" student housing',          "tier": 3, "lookback_days": 365},
-    {"name": "Ares Management",               "query": '"Ares Management" student housing', "tier": 3, "lookback_days": 365},
-    {"name": "Kayne Anderson Real Estate",    "query": '"Kayne Anderson Real Estate" student housing', "tier": 3, "lookback_days": 365},
-    {"name": "Blackstone",                    "query": '"Blackstone" student housing',      "tier": 3, "lookback_days": 365},
-    {"name": "Brookfield",                    "query": '"Brookfield" student housing',      "tier": 3, "lookback_days": 365},
+    {"name": "Harrison Street",               "query": '"Harrison Street" student housing', "tier": 3, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Hawkins Way Capital",           "query": '"Hawkins Way Capital" student housing', "tier": 3, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Affinius Capital",              "query": '"Affinius Capital" student housing', "tier": 3, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "PCCP",                          "query": '"PCCP" student housing',            "tier": 3, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "QuadReal",                      "query": '"QuadReal" student housing',        "tier": 3, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Nuveen",                        "query": '"Nuveen" student housing',          "tier": 3, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Ares Management",               "query": '"Ares Management" student housing', "tier": 3, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Kayne Anderson Real Estate",    "query": '"Kayne Anderson Real Estate" student housing', "tier": 3, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Blackstone",                    "query": '"Blackstone" student housing',      "tier": 3, "lookback_days": 365, "sector": "Student Housing"},
+    {"name": "Brookfield",                    "query": '"Brookfield" student housing',      "tier": 3, "lookback_days": 365, "sector": "Student Housing"},
 
     # Tier 4 — 중개·자문 (거래 파이프라인 조기 신호원; 뉴스 빈도가 높아 창을 짧게 유지)
-    {"name": "TSB Capital Advisors",          "query": '"TSB Capital Advisors" student housing', "tier": 4, "lookback_days": 180},
-    {"name": "Walker & Dunlop",               "query": '"Walker & Dunlop" student housing', "tier": 4, "lookback_days": 180},
-    {"name": "Berkadia",                      "query": '"Berkadia" student housing',        "tier": 4, "lookback_days": 180},
-    {"name": "JLL",                           "query": '"JLL" student housing',             "tier": 4, "lookback_days": 180},
-    {"name": "Newmark",                       "query": '"Newmark" student housing',         "tier": 4, "lookback_days": 180},
-    {"name": "Institutional Property Advisors", "query": '"Institutional Property Advisors" student housing', "tier": 4, "lookback_days": 180},
+    {"name": "TSB Capital Advisors",          "query": '"TSB Capital Advisors" student housing', "tier": 4, "lookback_days": 180, "sector": "Student Housing"},
+    {"name": "Walker & Dunlop",               "query": '"Walker & Dunlop" student housing', "tier": 4, "lookback_days": 180, "sector": "Student Housing"},
+    {"name": "Berkadia",                      "query": '"Berkadia" student housing',        "tier": 4, "lookback_days": 180, "sector": "Student Housing"},
+    {"name": "JLL",                           "query": '"JLL" student housing',             "tier": 4, "lookback_days": 180, "sector": "Student Housing"},
+    {"name": "Newmark",                       "query": '"Newmark" student housing',         "tier": 4, "lookback_days": 180, "sector": "Student Housing"},
+    {"name": "Institutional Property Advisors", "query": '"Institutional Property Advisors" student housing', "tier": 4, "lookback_days": 180, "sector": "Student Housing"},
+
+    # ------------------------------------------------------------------
+    # Active Adult(55+) — 2026.09 신설. CoStar에 Active Adult property type
+    # 분류가 없어 운영 브랜드를 분류키로 쓰는 리서치 논리를 뉴스 수집에도
+    # 적용한다 — 대학명이 SH 수집의 키였듯 브랜드명이 AA 수집의 키다.
+    # lookback_days=730 고정: AA는 SH보다도 뉴스 빈도가 낮은 것으로 진단됨.
+    # max_entries=50: Google News가 이 쿼리들에서 반환 상한(100건)에 자주
+    # 걸려 기본 [:30]이면 절반 이상을 버린다(fetch_industry_player_feed 참조).
+    #
+    # ⚠️ 아래는 2026.09 진단(diag_aa.py, diag_aa2.py — 커밋하지 않음)에서
+    # Google News RSS 실제 응답의 상위 8건을 육안 검수해 오탐 0건만 채택한
+    # 것이다. 채택하지 않은 후보와 사유는 아래 REJECTED 주석 참조 —
+    # 진단 없이 브랜드명을 추가하지 말 것 (Blue Vista 오탐 사고 재발 방지).
+    {"name": "Overture (Greystar)",           "query": '"Overture" active adult',           "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    {"name": "Everleigh (Greystar)",          "query": '"Everleigh" active adult',          "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    {"name": "Album (Greystar)",              "query": '"Album" Greystar',                  "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    {"name": "Avenida",                       "query": '"Avenida" active adult',            "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    {"name": "Affinity Living Communities",   "query": '"Affinity Living Communities"',     "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    {"name": "Treplus Communities",           "query": '"Treplus Communities"',             "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    {"name": "Mera (Sparrow)",                "query": '"Mera" Sparrow',                    "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+
+    {"name": "Sparrow Partners",              "query": '"Sparrow Partners"',                "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    {"name": "Welltower",                     "query": '"Welltower" active adult',          "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    # 이름 뒤에 (Active Adult)를 붙인다 — 기존 Tier 2 SH 항목("Greystar",
+    # student housing 쿼리)과 name이 같으면 source 라벨("Player — Greystar")이
+    # 겹쳐 SH·AA 기사를 구분할 수 없게 된다.
+    {"name": "Greystar (Active Adult)",       "query": '"Greystar" active adult',           "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    {"name": "Carlyle (Active Adult)",        "query": '"Carlyle" active adult',            "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    {"name": "Capitol Seniors Housing",       "query": '"Capitol Seniors Housing"',         "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    {"name": "Clover (Welltower)",            "query": '"Clover" Welltower',                "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+
+    # 섹터 일반어 — 특정 브랜드가 아니라 "active adult"/"55+" 자체를 키워드로
+    # 잡는다. 진단 결과 브랜드 쿼리보다 오히려 오탐이 없었다(업계 전문지 기사
+    # 위주로 반환됨). Google News 반환 상한(100건)에 걸려 물량 확보 목적에
+    # 부합한다.
+    {"name": "Active Adult — housing",        "query": '"active adult" housing',            "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    {"name": "Active Adult — development",    "query": '"active adult" community development', "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    {"name": "Active Adult — 55+",            "query": '"55+" apartments',                  "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+    {"name": "Active Adult — age-restricted", "query": "age-restricted apartments",         "tier": "AA", "lookback_days": 730, "sector": "Active Adult", "max_entries": 50},
+
+    # REJECTED (2026.09 진단, diag_aa.py/diag_aa2.py — 등재하지 않음):
+    #   Calamar          — 스페인어 "오징어", 오징어게임/식당/축구팀 기사 7/8
+    #   Living Out       — "living out"이 관용구, 은퇴 리스티클 다수 혼입
+    #   CIM Group        — 종합 투자사라 "active adult" 한정어가 안 먹힘
+    #                       (산업용 부동산·일반 Multifamily 딜이 섞여 나옴)
+    #   Vitality Living  — Clarion Partners 등 무관 회사 기사가 섞여 유입
+    #   Everleigh (bare) — 여아 이름·부고 기사와 충돌 (한정어 버전은 채택)
+    #   Amberlin (bare, +Sparrow, +active adult 전부) — 밴드명·인명·무관
+    #     지역뉴스와 충돌. Sparrow/active adult 한정어를 붙여도 오탐 지속
+    #     (Naples 주택시장 기사, Sachse 교통사고 기사 등) — 재진단 전까지 보류
 ]
 
 REQUEST_HEADERS = {
@@ -393,11 +448,15 @@ def _make_google_news_query_url(query: str) -> str:
 
 
 def fetch_industry_player_feed(player: dict) -> list[dict]:
-    """기업명 기반 Google News RSS 수집. sector = 'Student Housing' 고정(초기값,
-    classifier.py가 이후 덮어쓴다).
+    """기업명 기반 Google News RSS 수집. sector는 player["sector"]를 초기값으로
+    쓴다(2026.09 Active Adult 축 신설 — 이전에는 "Student Housing" 하드코딩이었다,
+    키 없으면 하위 호환을 위해 "Student Housing" 폴백). classifier.py가 이후
+    최종 sector를 덮어쓴다.
     대학·일반 RSS 피드와 달리 피드별 lookback_days를 사용한다.
     이유는 CLAUDE.md '수집 구조 정정' 절 참조."""
     name = player["name"]
+    sector = player.get("sector", "Student Housing")
+    max_entries = player.get("max_entries", 30)
     url = _make_google_news_query_url(player["query"])
     source_label = f"Player — {name}"
     try:
@@ -407,7 +466,7 @@ def fetch_industry_player_feed(player: dict) -> list[dict]:
         return []
     cutoff = datetime.now() - timedelta(days=player.get("lookback_days", 90))
     articles = []
-    for entry in feed.entries[:30]:
+    for entry in feed.entries[:max_entries]:
         title = _clean_html(entry.get("title", "")).strip()
         link = (entry.get("link") or "").strip()
         if not title or not link:
@@ -432,7 +491,7 @@ def fetch_industry_player_feed(player: dict) -> list[dict]:
             "category":         "",
             "event_tags":       "",
             "signal_type":      "",
-            "sector":           "Student Housing",
+            "sector":           sector,
             "woomi_relevance":  "",
             "claude_rationale": "",
             "access_limited":   False,  # Google News RSS: title이 실질 콘텐츠
