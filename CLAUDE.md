@@ -385,6 +385,47 @@ Batch API를 처음부터 다시 돌리면서, 최근에는 2~7건만 추가로 
 articles.csv의 142건 잔여 행 정리는 TODO #9에서 완료됨. CLAUDE.md TODO #4
 "제목 중복 167행 정리"와는 판정 기준이 다른 별건이다.
 
+### geo Phase 2 완료 (2026.09) — 원장 7,099건 백필, 비용 $3.91
+
+Stage A(Haiku) 백필 완료, 회귀 검증(labels.db 300건 고정 샘플) 변경 0건.
+
+**세 번째 오판정 유형 확인 — "크로스워크에 정답이 없어 오답이 유일 후보가
+되는" 경우.** Columbia·Miami·Glendale은 후보가 여럿인데 하나를 잘못 고른
+문제였고 모호성 체크(city_noState/title_idx 통합 조회)로 잡혔다. Manhattan은
+다르다 — 뉴욕 자치구가 Census 원본에 카운티명(New York County 등)으로만
+존재하고 지명으로는 없어서, title_idx의 유일한 매치(Manhattan, KS)가
+모호성 없이 확정돼버렸다(116건 오판정). 모호성 체크는 원리적으로 "후보가
+여럿"만 잡지 "후보가 아예 없거나 하나뿐인데 그게 틀렸다"는 못 잡는다.
+향후 유사 갭을 찾으려면 CBSA 상위 목록에서 "왜 이 소도시가 상위에 있나"를
+의심하는 방식이 유효하다 — 실제로 이 방식으로 발견했다.
+
+**Stage A 추출 패턴 네 갈래와 각 대응**:
+1. 정식명 표기 변형("N.Y.U." vs "New York University") → geo_norm.norm_university()
+2. 기계적 약칭(첫글자 조합, "NYU"/"JMU") → university_abbreviations
+3. 구어체 축약("Emory"/"UMass"/"UC Davis", University 생략·포트맨토) →
+   university_colloquial, 실측 데이터에서만 채택(추측 금지)
+4. 지명 자체의 대안 표기(자치구 등) → submarkets("Manhattan"→35620)
+
+**alias 충돌 검사 범위 교훈**: 약칭 충돌 검사는 "코드가 있는 대학"이 아니라
+BLUE_VISTA_UNIVERSITIES 175개 전체를 대상으로 해야 한다. 154개만 검사해
+KSU/PSU/CSUF/ISU 충돌(각각 Kennesaw/Penn/Fullerton/Illinois State와 충돌)을
+놓쳤다가 백필 후 실측 데이터에서 오판정 6건으로 드러나 제거했다. 미해결
+대학도 다른 대학의 약칭과 실제로 충돌할 수 있다 — "코드 없음"이 "위험 없음"을
+뜻하지 않는다.
+
+**alias 우선순위 원칙**: 주(state)가 명시되면 city/county 정확매칭이
+alias보다 먼저 확인된다. 그렇지 않으면 "Manhattan"처럼 실재하는 다른
+지명(Manhattan, KS)에 대한 alias가 그 지명의 정확한 매칭을 덮어써 반대
+방향 오판정을 만든다.
+
+stage_a_json 보존 덕분에 이번 라운드 포함 두 차례의 alias 보강이 API
+재호출 없이 resolve-only만으로 가능했다 — Plan.md §2 설계("alias 수정 시
+Stage B만 재실행")가 실전에서 정확히 의도대로 작동했다.
+
+**원장 article_id 중복 23건(TODO #9 잔여분)이 이번에도 문제를 일으켰다**
+(Batch API custom_id 중복으로 백필 1차 시도가 아예 거부됨, geo_tagger.py에서
+방어 코드로 우회). 세 번째 사고이므로 정리 우선순위를 올릴 것.
+
 ## articles.csv 컬럼 (16개 확정)
 article_id, collected_at, published_at, source, title,
 url, summary, classified, category, event_tags,
@@ -523,8 +564,12 @@ woomi_relevance: CSV 저장만, UI 미노출
 - semi-annual 리포트 프롬프트에 백필 구간 주의 문구 → 반기 리포트 생성 시
 
 ### geo 태깅
-- CBSA 크로스워크 구축 + geo_tags.csv 신설 (articles.csv 스키마 불변)
-- IC Helper 연동 — 딜 지역 공급 파이프라인 조회
+- ✅ Phase 1(크로스워크+결정론적 리졸버) · Phase 1.5(대학 alias 보강) ·
+  Phase 2(Stage A 백필 7,099건 + 뉴욕 자치구·대학 구어체 alias 2차 보강)
+  완료. articles.csv 스키마는 손대지 않고 geo_tags.db 사이드카로 분리
+  (Plan.md §4.2 대안 B). 자세한 내용은 위 "geo Phase 2 완료" 절 참조
+- 다음: daily_collect.yml 파이프라인 연동, IC Helper 연동 — 딜 지역 공급
+  파이프라인 조회
 
 ### 공모전
 - 2026 AI Innovation Challenge B Track 제출 (10월 초 목표)
