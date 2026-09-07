@@ -5,8 +5,13 @@
 # universities 섹션은 collector.py의 BLUE_VISTA_UNIVERSITIES 175개를 시드로,
 # (city, state)로 cbsa_crosswalk.json의 city_idx를 조회해 자동 도출했다
 # (scripts/build_geo_crosswalk.py 실행 시 항상 재생성 가능, 수작업 아님).
-# 도출 성공 147건 / 실패 28건 (실패 목록은 CLAUDE.md·작업 보고 참조,
-# I8에 따라 이 파일에는 넣지 않는다).
+# 2026.09 Phase 1.5: geo_norm.norm()에 Census 법정명 정규화 규칙을 추가해
+# city_idx 직접 매칭 2건(Louisville, Honolulu)을 추가 해소했고, 나머지는
+# title_idx 접두사 매칭(Category B, "카운티 역참조" 대신 CBSA 타이틀 자체가
+# <city>로 시작하는지 확인)으로 5건을 더 해소했다 — 이 5건은 city_idx
+# 자동 도출이 아니므로 재실행해도 자동 재생성되지 않는다(아래에 고정 기재).
+# 도출 성공 154건 / 미해결 21건 (미해결 목록은 파일
+# 하단 주석 블록 참조, I8에 따라 이 섹션에는 넣지 않는다).
 
 universities:
   "Appalachian State University": "14380"
@@ -15,6 +20,7 @@ universities:
   "Ball State University": "34620"
   "Baylor University": "47380"
   "Binghamton University - State University of New York": "13780"
+  "Boise State University": "14260"
   "Boston College": "14460"
   "Boston University": "14460"
   "Brigham Young University": "39340"
@@ -46,6 +52,7 @@ universities:
   "Georgia State University": "12060"
   "Harvard University": "14460"
   "Indiana University": "14020"
+  "Indiana University - Purdue University Indianapolis": "26900"
   "Iowa State University": "11180"
   "James Madison University": "25500"
   "Kansas State University": "31740"
@@ -101,11 +108,16 @@ universities:
   "University of Cincinnati": "17140"
   "University of Colorado - Boulder": "14500"
   "University of Florida": "23540"
+  "University of Georgia": "12020"
+  "University of Hawaii at Manoa": "46520"
   "University of Houston": "26420"
   "University of Illinois - Chicago": "16980"
   "University of Illinois - Urbana-Champaign": "16580"
   "University of Iowa": "26980"
   "University of Kansas": "29940"
+  "University of Kentucky": "30460"
+  "University of Louisville": "31140"
+  "University of Massachusetts": "11200"
   "University of Memphis": "32820"
   "University of Miami": "33100"
   "University of Michigan": "11460"
@@ -183,3 +195,31 @@ regional_terms_no_mapping:
   - "Midwest"
   - "Mountain West"
   - "Pacific Northwest"
+
+# 미해결 대학 (CBSA 자동 도출 실패, 추정 금지 — I8)
+# 2026.09 Phase 1.5: city_idx 직접 매칭 + title_idx 접두사 매칭(카운티 역참조 대신)
+# 둘 다 실패한 건들이다. 대학의 소재 카운티 정보가 BLUE_VISTA_UNIVERSITIES에
+# 없어 county_idx는 시도하지 않았다(카운티명 추측 자체가 I8 위반이므로).
+# future-me가 수작업으로 채울 때: 카운티명을 확인해 county_idx를 직접 조회하거나,
+# 해당 CBSA 코드를 census.gov에서 확인 후 여기 universities 섹션에 추가할 것.
+# California State Polytechnic University - Pomona (Pomona, CA): Pomona, CA가 어느 CBSA의 principal city도 아니고 title에도 없음
+# California State University - Fullerton (Fullerton, CA): Fullerton, CA가 어느 CBSA의 principal city도 아니고 title에도 없음
+# California State University - Northridge (Northridge, CA): Northridge, CA가 어느 CBSA의 principal city도 아니고 title에도 없음
+# Clemson University (Clemson, SC): Clemson, SC가 어느 CBSA의 principal city도 아니고 title에도 없음
+# George Mason University (Fairfax, VA): Fairfax, VA가 어느 CBSA의 principal city도 아니고 title에도 없음
+# Grand Valley State University - Allendale Campus (Allendale, MI): Allendale, MI가 어느 CBSA의 principal city도 아니고 title에도 없음
+# Illinois State University (Normal, IL): Normal, IL가 어느 CBSA의 principal city도 아니고 title에도 없음
+# Kennesaw State University (Kennesaw, GA): Kennesaw, GA가 어느 CBSA의 principal city도 아니고 title에도 없음
+# Pennsylvania State University (University Park, PA): University Park, PA가 어느 CBSA의 principal city도 아니고 title에도 없음
+# Rutgers University - New Brunswick (Highland Park, NJ): Highland Park, NJ가 어느 CBSA의 principal city도 아니고 title에도 없음
+# Stony Brook University (Stony Brook, NY): Stony Brook, NY가 어느 CBSA의 principal city도 아니고 title에도 없음
+# University of California - Davis (Davis, CA): Davis, CA가 어느 CBSA의 principal city도 아니고 title에도 없음
+# University of Connecticut (Storrs, CT): Storrs, CT가 어느 CBSA의 principal city도 아니고 title에도 없음
+# University of Maryland (College Park, MD): College Park, MD가 어느 CBSA의 principal city도 아니고 title에도 없음
+# University of Oklahoma (Norman, OK): Norman, OK가 어느 CBSA의 principal city도 아니고 title에도 없음
+# Western Carolina University (Cullowhee, NC): Cullowhee, NC가 어느 CBSA의 principal city도 아니고 title에도 없음
+# Bowling Green State University (Bowling Green, OH): Bowling Green, OH 명칭의 CBSA/principal city가 다른 주에만 존재 — 이 대학은 CBSA 미소속 카운티에 있을 가능성
+# Kent State University (Kent, OH): Kent, OH 명칭의 CBSA/principal city가 다른 주에만 존재 — 이 대학은 CBSA 미소속 카운티에 있을 가능성
+# Miami University (Oxford, OH): Oxford, OH 명칭의 CBSA/principal city가 다른 주에만 존재 — 이 대학은 CBSA 미소속 카운티에 있을 가능성
+# University of Delaware (Newark, DE): Newark, DE 명칭의 CBSA/principal city가 다른 주에만 존재 — 이 대학은 CBSA 미소속 카운티에 있을 가능성
+# University of New Hampshire (Durham, NH): Durham, NH 명칭의 CBSA/principal city가 다른 주에만 존재 — 이 대학은 CBSA 미소속 카운티에 있을 가능성

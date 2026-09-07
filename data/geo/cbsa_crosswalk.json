@@ -1,7 +1,7 @@
 {
  "vintage": "2023",
  "source": "OMB Bulletin 23-01 / US Census Bureau delineation files (list1/list2)",
- "built_at": "2026-09-07T00:20:01.536029+00:00",
+ "built_at": "2026-09-07T00:42:20.183889+00:00",
  "cbsa": {
   "10100": {
    "code": "10100",
@@ -17249,7 +17249,7 @@
   "athens|TX": [
    "11980"
   ],
-  "athens-clarke county unified government (balance)|GA": [
+  "athens-clarke county unified government|GA": [
    "12020"
   ],
   "alpharetta|GA": [
@@ -17288,7 +17288,7 @@
   "opelika|AL": [
    "12220"
   ],
-  "augusta-richmond county consolidated government (balance)|GA": [
+  "augusta-richmond county consolidated government|GA": [
    "12260"
   ],
   "augusta|ME": [
@@ -17582,7 +17582,7 @@
   "south burlington|VT": [
    "15540"
   ],
-  "butte-silver bow (balance)|MT": [
+  "butte-silver bow|MT": [
    "15580"
   ],
   "cadillac|MI": [
@@ -18674,7 +18674,7 @@
   "greenwood|IN": [
    "26900"
   ],
-  "indianapolis city (balance)|IN": [
+  "indianapolis city|IN": [
    "26900"
   ],
   "iowa city|IA": [
@@ -19106,7 +19106,7 @@
   "tustin|CA": [
    "31080"
   ],
-  "louisville/jefferson county metro government (balance)|KY": [
+  "louisville|KY": [
    "31140"
   ],
   "lubbock|TX": [
@@ -19505,7 +19505,7 @@
   "murfreesboro|TN": [
    "34980"
   ],
-  "nashville-davidson metropolitan government (balance)|TN": [
+  "nashville-davidson metropolitan government|TN": [
    "34980"
   ],
   "smyrna|TN": [
@@ -20675,7 +20675,7 @@
   "urbana|OH": [
    "46500"
   ],
-  "urban honolulu|HI": [
+  "honolulu|HI": [
    "46520"
   ],
   "rome|NY": [
@@ -21128,7 +21128,7 @@
    "11980",
    "12020"
   ],
-  "athens-clarke county unified government (balance)": [
+  "athens-clarke county unified government": [
    "12020"
   ],
   "alpharetta": [
@@ -21167,7 +21167,7 @@
   "opelika": [
    "12220"
   ],
-  "augusta-richmond county consolidated government (balance)": [
+  "augusta-richmond county consolidated government": [
    "12260"
   ],
   "augusta": [
@@ -21455,7 +21455,7 @@
   "south burlington": [
    "15540"
   ],
-  "butte-silver bow (balance)": [
+  "butte-silver bow": [
    "15580"
   ],
   "cadillac": [
@@ -22474,7 +22474,7 @@
   "carmel": [
    "26900"
   ],
-  "indianapolis city (balance)": [
+  "indianapolis city": [
    "26900"
   ],
   "iowa city": [
@@ -22863,7 +22863,7 @@
   "tustin": [
    "31080"
   ],
-  "louisville/jefferson county metro government (balance)": [
+  "louisville": [
    "31140"
   ],
   "lubbock": [
@@ -23228,7 +23228,7 @@
   "murfreesboro": [
    "34980"
   ],
-  "nashville-davidson metropolitan government (balance)": [
+  "nashville-davidson metropolitan government": [
    "34980"
   ],
   "smyrna": [
@@ -24319,7 +24319,7 @@
   "union city": [
    "46460"
   ],
-  "urban honolulu": [
+  "honolulu": [
    "46520"
   ],
   "utica": [
@@ -24575,9 +24575,6 @@
   ],
   "indianapolis": [
    "26900"
-  ],
-  "louisville/jefferson": [
-   "31140"
   ],
   "macon": [
    "31420"
@@ -25991,7 +25988,7 @@
   "los angeles-long beach-anaheim": [
    "31080"
   ],
-  "louisville/jefferson": [
+  "louisville": [
    "31140"
   ],
   "lubbock": [
@@ -27045,7 +27042,7 @@
   "urbana": [
    "46500"
   ],
-  "urban honolulu": [
+  "honolulu": [
    "46520"
   ],
   "utica-rome": [
@@ -27263,6 +27260,7 @@
   "ball state university": "34620",
   "baylor university": "47380",
   "binghamton university - state university of new york": "13780",
+  "boise state university": "14260",
   "boston college": "14460",
   "boston university": "14460",
   "brigham young university": "39340",
@@ -27294,6 +27292,7 @@
   "georgia state university": "12060",
   "harvard university": "14460",
   "indiana university": "14020",
+  "indiana university - purdue university indianapolis": "26900",
   "iowa state university": "11180",
   "james madison university": "25500",
   "kansas state university": "31740",
@@ -27349,11 +27348,16 @@
   "university of cincinnati": "17140",
   "university of colorado - boulder": "14500",
   "university of florida": "23540",
+  "university of georgia": "12020",
+  "university of hawaii at manoa": "46520",
   "university of houston": "26420",
   "university of illinois - chicago": "16980",
   "university of illinois - urbana-champaign": "16580",
   "university of iowa": "26980",
   "university of kansas": "29940",
+  "university of kentucky": "30460",
+  "university of louisville": "31140",
+  "university of massachusetts": "11200",
   "university of memphis": "32820",
   "university of miami": "33100",
   "university of michigan": "11460",
