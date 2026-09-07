@@ -25,7 +25,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from geo_norm import norm, STATE_ABBR
+from geo_norm import norm, norm_university, campus_base, STATE_ABBR
 
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data/geo/raw"
@@ -139,17 +139,50 @@ def build():
         city_noState.setdefault(first, []).append(code)
 
     # --- 4) 수작업 alias 병합 -------------------------------------------------
+    # 지명(legacy_titles/submarkets/colloquial)은 norm(), 대학명(universities/
+    # university_abbreviations)은 norm_university()로 — 정규화 규칙이 다르므로
+    # 서로 다른 인덱스(alias_idx vs university_idx)에 별도로 넣는다.
+    # 2026.09 Phase 2.5: 하나의 alias_idx에 두 정규화를 섞어 넣으면 빌드 시점
+    # 키(norm_university)와 조회 시점 키(norm)가 어긋나 매칭이 실패한다.
     alias_idx: dict[str, str] = {}
+    university_idx: dict[str, str] = {}
+    university_base_idx: dict[str, list] = {}
     if ALIASES.exists():
         aliases = yaml.safe_load(ALIASES.read_text(encoding="utf-8")) or {}
-        for section in ("universities", "legacy_titles", "submarkets", "colloquial"):
+
+        for name, code in (aliases.get("universities") or {}).items():
+            code = str(code).strip()
+            if not code:
+                continue
+            code = code.zfill(5)
+            university_idx[norm_university(name)] = code
+            base = campus_base(name)
+            # ⚠️ 2026.09 Phase 2.5 실측으로 발견: 하이픈이 없는 이름(예: "University
+            # of Missouri", Columbia MO)은 campus_base()가 그대로 돌려주므로
+            # base == 자기 자신의 정식명이 된다. 이걸 university_base_idx에 넣으면
+            # "University of Missouri-Kansas City"(전혀 다른 독립 대학, Kansas
+            # City MO-KS 소재)가 campus_base로 "university of missouri"까지
+            # 잘려 이 무관한 항목과 충돌 — Columbia로 오판정됐다. 실제로 하이픈이
+            # 있어 잘린 이름만 base 인덱스에 넣는다(캠퍼스 접미사가 있는 것끼리만
+            # 모호성 판단 대상). 이미 정확히 일치하는 이름은 위 university_idx의
+            # 정확매칭(0단계)이 처리하므로 base fallback에 새지 않아도 된다.
+            if base != norm_university(name):
+                university_base_idx.setdefault(base, []).append(code)
+
+        for abbr, code in (aliases.get("university_abbreviations") or {}).items():
+            code = str(code).strip()
+            if not code:
+                continue
+            university_idx[norm_university(abbr)] = code.zfill(5)
+
+        for section in ("legacy_titles", "submarkets", "colloquial"):
             for alias, code in (aliases.get(section) or {}).items():
                 code = str(code).strip()
                 if not code:
                     continue  # 의도적 공백(미해결 처리, 예: "Mid-Missouri") — 건너뜀
                 alias_idx[norm(alias)] = code.zfill(5)
     else:
-        print(f"[WARN] {ALIASES} 없음 — alias_idx 비어있는 채로 빌드")
+        print(f"[WARN] {ALIASES} 없음 — alias_idx/university_idx 비어있는 채로 빌드")
 
     # --- 5) 중복 제거 후 저장 ---------------------------------------------------
     def dedupe(dd: dict) -> dict:
@@ -159,6 +192,7 @@ def build():
     city_idx = dedupe(city_idx)
     city_noState = dedupe(city_noState)
     title_idx = dedupe(title_idx)
+    university_base_idx = dedupe(university_base_idx)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({
@@ -171,6 +205,8 @@ def build():
         "city_noState": city_noState,
         "title_idx": title_idx,
         "alias_idx": alias_idx,
+        "university_idx": university_idx,
+        "university_base_idx": university_base_idx,
         "state_abbr": STATE_ABBR,
     }, ensure_ascii=False, indent=1), encoding="utf-8")
 
@@ -180,6 +216,9 @@ def build():
     print(f"CBSA 총 {len(cbsa)}개 (MSA {msa} / uSA {usa} / 기타 {len(cbsa) - msa - usa})")
     print(f"city_idx {len(city_idx)} / county_idx {len(county_idx)} "
           f"/ title_idx {len(title_idx)} / alias_idx {len(alias_idx)}")
+    print(f"university_idx {len(university_idx)} / university_base_idx {len(university_base_idx)}")
+    multi_campus = {k: v for k, v in university_base_idx.items() if len(v) >= 2}
+    print(f"  캠퍼스 base 공유(2개 이상, 확정 금지 대상) {len(multi_campus)}개")
 
     print("\n확인 코드:")
     for code in ("12060", "17860", "17900", "12020", "41180"):

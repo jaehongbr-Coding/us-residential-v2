@@ -67,3 +67,53 @@ def norm(s: str) -> str:
     # 접두사 제거 (city of / town of / village of)
     s = re.sub(r"^(city of|town of|village of)\s+", "", s)
     return s
+
+
+def norm_university(s: str) -> str:
+    """대학명 전용 정규화. norm()과 규칙이 다르므로 분리한다 —
+    지명은 county/city 접미사를 다루지만 대학명은 표기 변형
+    ("N.Y.U." vs "New York University", "... at Austin" vs "... - Austin")을
+    다룬다. 하나로 합치면 서로 다른 종류의 규칙이 뒤섞여 유지보수가 어려워진다.
+
+    2026.09 Phase 2.5: 50건 샘플 검수에서 confidence=none 27건 중 11건이
+    대학이었다 — Stage A는 "N.Y.U."를 정확히 추출했지만 alias_idx 키는
+    "New York University"로만 등재돼 있어 매칭에 실패했다. 이 함수는 그
+    표기 차이만 흡수한다. 캠퍼스 접미사("- Madison" 등) 처리는 여기서
+    하지 않는다 — 그건 여러 캠퍼스가 서로 다른 CBSA일 수 있어 별도
+    로직(geo_resolver의 캠퍼스 fallback)에서 후보 개수를 보고 판단해야
+    한다(I8: 후보 2개 이상이면 확정하지 않는다).
+    """
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKD", str(s))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = s.lower()
+    s = re.sub(r"[.'’,]", "", s)          # "n.y.u." -> "nyu"
+    s = re.sub(r"[-–—]", " ", s)           # 하이픈/대시 -> 공백
+    s = re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"^the\s+", "", s)          # "The University of Texas..." -> "university of texas..."
+    s = re.sub(r"\bat\b", "", s)           # "... at Austin" == "... Austin"
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def campus_base(s: str) -> str:
+    """캠퍼스 접미사를 뗀 "base" 키를 만든다. norm_university() 결과에서
+    마지막 " - 캠퍼스명" 또는 마지막 " 캠퍼스명"(하이픈이 이미 공백으로
+    치환된 뒤이므로) 세그먼트를 하나 제거한다.
+
+    ⚠️ 이 결과 하나만으로 확정하지 않는다 — 호출부(geo_resolver)가 이
+    base 키로 alias_idx를 조회했을 때 후보가 몇 개인지 반드시 확인해야
+    한다. "University of Wisconsin"처럼 여러 캠퍼스가 있는 이름은 base가
+    아니라 이미 그 자체가 애매한 이름이므로, 이 함수는 오직
+    "University of X - Y" -> "University of X" 방향의 캠퍼스명 제거만
+    한다(마지막 공백 이후 토큰 나열을 통째로 잘라내는 것이 아니라, 원본
+    문자열에 하이픈이 있었던 경우에만 그 이후를 자른다 — 안 그러면
+    "Purdue University Northwest"의 "Northwest"까지 캠퍼스명으로 오인해
+    "Purdue University"로 잘못 축약해버린다).
+    """
+    if not s or "-" not in s and "–" not in s and "—" not in s:
+        return norm_university(s)
+    # 원본에 하이픈이 있었던 경우에만 그 앞부분을 base로 취급한다
+    base_raw = re.split(r"[-–—]", s, maxsplit=1)[0]
+    return norm_university(base_raw)

@@ -12,6 +12,19 @@
 # 자동 도출이 아니므로 재실행해도 자동 재생성되지 않는다(아래에 고정 기재).
 # 도출 성공 154건 / 미해결 21건 (미해결 목록은 파일
 # 하단 주석 블록 참조, I8에 따라 이 섹션에는 넣지 않는다).
+#
+# 2026.09 Phase 2.5: 50건 샘플 검수에서 confidence=none 27건 중 11건이
+# 대학이었다 — Stage A는 정확히 추출했으나("N.Y.U.") universities 섹션의
+# 정식명("New York University")과 문자열이 달라 alias_idx가 못 찾았다.
+# 세 갈래로 갭을 메웠다: ① geo_norm.norm_university()로 표기 변형("N.Y.U."
+# ↔ "New York University", "... at Austin" ↔ "... - Austin") 흡수,
+# ② geo_norm.campus_base() + geo_resolver의 캠퍼스 fallback으로 "University
+# of Wisconsin"처럼 캠퍼스 미지정 언급을 후보 개수 확인 후 처리(1개면
+# inferred, 2개 이상이면 절대 확정하지 않고 ambiguous — Columbia/Miami/
+# Glendale과 같은 실패 패턴 재발 방지), ③ 아래 university_abbreviations
+# 섹션. universities/university_abbreviations는 norm()이 아니라
+# norm_university()로 별도 인덱스(university_idx)에 들어간다 — 지명
+# 정규화 규칙과 대학명 정규화 규칙이 다르기 때문이다.
 
 universities:
   "Appalachian State University": "14380"
@@ -168,6 +181,94 @@ universities:
   "Western Michigan University": "28020"
   "Western Washington University": "13380"
   "Wichita State University": "48620"
+
+university_abbreviations:
+  # 2026.09 Phase 2.5: universities 섹션의 154개 대학명에서 기계적으로 생성한
+  # 약칭 — 각 단어(of/the/and/at/for/in 제외) 첫 글자를 딴 것. 3글자 미만
+  # (UT/UW/UA/UC/UM/UP 등 30개)과 두 대학 이상이 겹치는 것(12개: ASU/BSU/
+  # CSU/GSU/MSU/OSU/TSU/UCB/USC/UTA/UWM/WSU — 예: UTA=Austin/Arlington,
+  # UWM=Madison/Milwaukee, USC=South Carolina/Southern California)은 전부
+  # 제외했다. "UGA"(University of Georgia 통칭)처럼 기계적 첫글자 조합으로는
+  # 나오지 않는 실제 통칭은 이 방식으로 못 만든다 — 수작업 추가는 I8 위반이라
+  # 하지 않았다. 전체 채택/제외 목록은 커밋 로그 및 작업 보고 참조.
+  "BUSUNY": "13780"
+  "BYU": "39340"
+  "CCU": "34820"
+  "CMU": "34380"
+  "CSUC": "17020"
+  "CSUF": "23420"
+  "CSULA": "31080"
+  "CSUS": "40900"
+  "CSUSB": "40140"
+  "ECU": "24780"
+  "ETSU": "27740"
+  "FAUBR": "33100"
+  "FGCU": "15980"
+  "FIU": "33100"
+  "FSU": "45220"
+  "GIT": "12060"
+  "GWU": "47900"
+  "ISU": "11180"
+  "IUPUI": "26900"
+  "JMU": "25500"
+  "KSU": "31740"
+  "LSU": "12940"
+  "MIT": "14460"
+  "MSUM": "31860"
+  "MTSU": "34980"
+  "NAU": "22380"
+  "NCASU": "24660"
+  "NCSU": "39580"
+  "NMSU": "29740"
+  "NYU": "35620"
+  "ODU": "47260"
+  "PSU": "38900"
+  "RIT": "40380"
+  "SCAD": "42340"
+  "SDSU": "41740"
+  "SHSU": "26660"
+  "SJSU": "41940"
+  "SLU": "41180"
+  "TAU": "17780"
+  "TCU": "19100"
+  "TTU": "31180"
+  "UAB": "13820"
+  "UBSUNY": "15380"
+  "UCF": "36740"
+  "UCI": "31080"
+  "UCLA": "31080"
+  "UCR": "40140"
+  "UCSB": "42200"
+  "UCSC": "42100"
+  "UHM": "46520"
+  "UIC": "16980"
+  "UIUC": "16580"
+  "UNC": "20500"
+  "UNCC": "16740"
+  "UNCG": "24660"
+  "UNCW": "48900"
+  "UND": "43780"
+  "UNL": "30700"
+  "UNLV": "29820"
+  "UNM": "10740"
+  "UNR": "39900"
+  "UNT": "19100"
+  "USA": "33660"
+  "USF": "45300"
+  "USM": "25620"
+  "USU": "30860"
+  "UTC": "16860"
+  "UTD": "19100"
+  "UTRGVBC": "15180"
+  "UTRGVEC": "32580"
+  "UTSA": "41700"
+  "UVU": "39340"
+  "VCU": "40060"
+  "VPISU": "13980"
+  "WKU": "14540"
+  "WMU": "28020"
+  "WVU": "34060"
+  "WWU": "13380"
 
 legacy_titles:
   # 구 vintage 명칭 -> 현행 코드 (research.md §4.2)
