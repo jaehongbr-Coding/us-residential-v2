@@ -56,7 +56,7 @@ def append_to_archive(articles: list[dict]) -> dict:
     for path, group in grouped.items():
         file_exists = os.path.exists(path)
         with open(path, "a", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+            writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS, lineterminator="\n")
             if not file_exists:
                 writer.writeheader()
             writer.writerows(group)
@@ -162,7 +162,7 @@ def rebuild_working_set(retention_days: int = 90) -> dict:
             final_rows.append(r)
 
     with open(ARTICLES_CSV, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS, lineterminator="\n")
         writer.writeheader()
         writer.writerows(final_rows)
 

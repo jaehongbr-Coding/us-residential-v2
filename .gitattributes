@@ -1,3 +1,8 @@
+* text=auto eol=lf
+*.csv text eol=lf
+*.db binary
+*.json text eol=lf
+
 articles.csv merge=union
 seen_index.db binary merge=ours
 labels.db binary merge=ours
