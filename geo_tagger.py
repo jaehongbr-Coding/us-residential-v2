@@ -145,9 +145,25 @@ def build_geo_prompt(article: dict) -> str:
 # 2. 대상 선정
 # ------------------------------------------------------------------
 
+def _dedupe_by_article_id(rows: list[dict]) -> list[dict]:
+    """원장에 남아있는 article_id 완전 중복 23건(CLAUDE.md TODO #9 잔여분,
+    title/summary/source가 달라 정리 대상에서 제외됐던 것) 방어.
+    Batch API는 같은 배치 안에 custom_id 중복을 허용하지 않아 그대로 두면
+    batches.create() 자체가 400으로 거부된다(2026.09 백필 1차 시도 실패 원인).
+    article_id당 collected_at이 가장 이른 행 하나만 남긴다 — dedupe_duplicates.py가
+    실제 원장 중복을 정리할 때 쓴 것과 동일한 기준."""
+    by_id: dict[str, dict] = {}
+    for r in rows:
+        aid = r["article_id"]
+        existing = by_id.get(aid)
+        if existing is None or r.get("collected_at", "") < existing.get("collected_at", ""):
+            by_id[aid] = r
+    return list(by_id.values())
+
+
 def _load_archive_and_tagged() -> tuple[list[dict], set]:
-    """원장 전체 + 이미 태깅된 article_id 집합."""
-    all_rows = archive_manager.read_archive()
+    """원장 전체(article_id 중복 제거) + 이미 태깅된 article_id 집합."""
+    all_rows = _dedupe_by_article_id(archive_manager.read_archive())
     conn = geo_store.open_geo()
     tagged_ids = {
         row[0] for row in conn.execute(
