@@ -45,8 +45,9 @@ WOOMI_RELEVANCE PRIORITY (apply in order):
 3. Does it involve BTR/SFR groundbreaking, completion, or institutional capital event? → "높음" (no size threshold)
 4. Does it involve a Known GP (Kennedy Wilson / Harrison Street / PCCP / Blue Vista / Lionheart / NexMetro / Middleburg / Hillpointe) in any residential deal? → always "높음"
 5. Does it involve Student Housing specifically? → apply STRICTER criteria: $50M+ deal or major platform only for "높음"; Student Housing under 500 beds (not units, beds) AND not a major platform → "보통" or "낮음"
-6. Is the information too local, too small, or off-sector? → "낮음"
-7. Everything else → "보통"
+6. Does it involve Active Adult specifically? → Active Adult projects are typically smaller in scale than conventional multifamily. Do NOT lower relevance merely because unit count or deal size is small — evaluate using criteria appropriate to the sector's characteristics, the same way Student Housing is evaluated on its own terms.
+7. Is the information too local, too small, or off-sector? → "낮음"
+8. Everything else → "보통"
 
 Classify the given article and return ONLY a JSON object with these exact fields:
 
@@ -54,7 +55,7 @@ Classify the given article and return ONLY a JSON object with these exact fields
   "category":         one of ["개발" | "시장" | "GP·자본흐름"],
   "event_tags":       array of applicable tags from [construction_start, delivery, permit, land_acquisition, transaction, acquisition, JV, policy, market_data, rent_occupancy, construction_cost, financing],
   "signal_type":      one of ["강세" | "약세" | "중립" | "혼재"],
-  "sector":           one of ["Multifamily" | "BTR" | "SFR" | "Student Housing" | "Senior Housing" | "Affordable Housing" | "Workforce Housing" | "Mixed-use"],
+  "sector":           one of ["Multifamily" | "BTR" | "SFR" | "Student Housing" | "Active Adult" | "Senior Housing" | "Affordable Housing" | "Workforce Housing" | "Mixed-use"],
   "woomi_relevance":  one of ["높음" | "보통" | "낮음"],
   "claude_rationale": one sentence in Korean explaining the classification,
   "korean_summary":   "3~5문장 한국어 요약. 핵심 내용, 주요 수치, 우미글로벌 관점의 의미를 포함."
@@ -71,7 +72,7 @@ If uncertain which of the three applies → default to "시장"
 
 sector rules:
 CRITICAL: "Other" and "Policy" are NOT valid sector values. Never use them.
-Valid sectors ONLY: ["Multifamily", "BTR", "SFR", "Student Housing", "Senior Housing", "Affordable Housing", "Workforce Housing", "Mixed-use"]
+Valid sectors ONLY: ["Multifamily", "BTR", "SFR", "Student Housing", "Active Adult", "Senior Housing", "Affordable Housing", "Workforce Housing", "Mixed-use"]
 Assignment rules:
   - industrial / office / commercial real estate → "Mixed-use"
   - residential-related but unclear type → "Multifamily"
@@ -79,6 +80,11 @@ Assignment rules:
   - affordable housing / low-income policy → "Affordable Housing"
   - general housing / multifamily policy → "Multifamily"
   - zoning / land use policy → "Multifamily"
+
+Active Adult vs Senior Housing — decide strictly by SERVICE PROVISION, not by age-restriction alone:
+  - "Active Adult": age-restricted (55+) rental housing with NO meals, nursing, or assisted-living services provided. Operating brands include (not exhaustive): Overture, Album, Avenida, Everleigh, Amberlin, Mera. Do not confuse with Independent Living — if no services are provided, it is Active Adult even if marketed as "independent living lifestyle."
+  - "Senior Housing": Independent Living, Assisted Living, or Memory Care facilities where care or living-support services are bundled with the housing. If services are present, it is Senior Housing.
+  - If the article does not make service provision clear, do NOT default to Senior Housing — decide only from facts stated in the article.
 
 financing rule (strictly enforced):
 Financing, loan, and refinancing content must NEVER determine the category.
@@ -91,18 +97,18 @@ event_tags rules:
 woomi_relevance rules (apply differently by category):
 
 [GP·자본흐름 category]
-- "높음": BTR/SFR/Multifamily platform acquisition or M&A by major institutional player (e.g. Berkshire Hathaway, Blackstone, Invitation Homes acquiring operator platforms); large-scale development project announcement $100M+ regardless of sector; vertically integrated developer platform formation or significant expansion; BTR/SFR platform M&A or operator acquisition; Multifamily portfolio deal $50M+; vertically integrated developer activity (Mavrek, NexMetro, Christopher Todd, Hillpointe, Middleburg); Japanese or Korean capital in US residential; JV/Co-GP/development partnership structure; niche sector fund formation (BTR/SFR/Senior/Workforce); direct mention of Kennedy Wilson/Blue Vista/Lionheart/Core Spaces/Continental; LP fund exit pressure or capital recovery acceleration; Student Housing deal $50M+ OR involving Core Spaces/Landmark/Greystar as developer/operator (under 500 beds AND non-major platform → "보통"); BTR/SFR operator or developer receiving institutional equity $30M+; any deal involving Known GPs: Kennedy Wilson / Harrison Street / PCCP / Blue Vista / Lionheart / NexMetro / Middleburg / Hillpointe
-- "보통": single-asset MF transaction under $50M, small-to-mid-size fund, Student Housing deal under $50M not involving major platform
+- "높음": BTR/SFR/Multifamily platform acquisition or M&A by major institutional player (e.g. Berkshire Hathaway, Blackstone, Invitation Homes acquiring operator platforms); large-scale development project announcement $100M+ regardless of sector; vertically integrated developer platform formation or significant expansion; BTR/SFR platform M&A or operator acquisition; Multifamily portfolio deal $50M+; vertically integrated developer activity (Mavrek, NexMetro, Christopher Todd, Hillpointe, Middleburg); Japanese or Korean capital in US residential; JV/Co-GP/development partnership structure; niche sector fund formation (BTR/SFR/Senior/Workforce); direct mention of Kennedy Wilson/Blue Vista/Lionheart/Core Spaces/Continental; LP fund exit pressure or capital recovery acceleration; Student Housing deal $50M+ OR involving Core Spaces/Landmark/Greystar as developer/operator (under 500 beds AND non-major platform → "보통"); Active Adult platform deal, portfolio transaction, or institutional capital move — Active Adult projects are typically smaller in scale than conventional multifamily, do not judge relevance by deal size alone; BTR/SFR operator or developer receiving institutional equity $30M+; any deal involving Known GPs: Kennedy Wilson / Harrison Street / PCCP / Blue Vista / Lionheart / NexMetro / Middleburg / Hillpointe
+- "보통": single-asset MF transaction under $50M, small-to-mid-size fund, Student Housing deal under $50M not involving major platform, single-asset Active Adult transaction without institutional capital involvement
 - "낮음": sub-$20M single asset deal, out-of-focus sector
 
 [시장 category]
-- "높음": Fed rate decision or mortgage rate movement; national or Sun Belt new-supply rent/absorption trend for BTR/SFR/Multifamily; Multifamily sector-wide supply, absorption, or rent trend data (national or Sun Belt); housing supply policy (zoning reform, YIMBY, LIHTC); national multifamily starts or permits data; BTR/SFR tenant retention rate or average tenure data; BTR oversupply or absorption slowdown signal; family renter demand or long-term lease preference data; Sun Belt BTR starts/permits/absorption data; national-level Student Housing market data only (nationwide occupancy, rent growth across multiple campuses); BTR/SFR sector-wide supply, absorption, or rent trend data; construction cost trend (lumber, steel, labor) affecting residential development; cap rate compression or expansion trend for MF/BTR assets; institutional investor sentiment shift toward or away from residential
-- "보통": single-city rent trend or demand data; single-campus Student Housing demand or occupancy article
+- "높음": Fed rate decision or mortgage rate movement; national or Sun Belt new-supply rent/absorption trend for BTR/SFR/Multifamily; Multifamily sector-wide supply, absorption, or rent trend data (national or Sun Belt); housing supply policy (zoning reform, YIMBY, LIHTC); national multifamily starts or permits data; BTR/SFR tenant retention rate or average tenure data; BTR oversupply or absorption slowdown signal; family renter demand or long-term lease preference data; Sun Belt BTR starts/permits/absorption data; national-level Student Housing market data only (nationwide occupancy, rent growth across multiple campuses); national or sector-wide Active Adult demand, occupancy, or rent trend data; BTR/SFR sector-wide supply, absorption, or rent trend data; construction cost trend (lumber, steel, labor) affecting residential development; cap rate compression or expansion trend for MF/BTR assets; institutional investor sentiment shift toward or away from residential
+- "보통": single-city rent trend or demand data; single-campus Student Housing demand or occupancy article; single-property Active Adult demand or occupancy article
 - "낮음": simple regional stat, individual building leasing update, individual campus housing update
 
 [개발 category]
-- "높음": confirmed groundbreaking or broke-ground article for projects $50M+ or 200+ units; BTR/SFR/Multifamily permit filing or zoning approval; development in LA/Atlanta/Dallas/Houston/Phoenix; BTR/SFR groundbreaking or completion regardless of size; Sun Belt (Atlanta/Dallas/Houston/Phoenix/Charlotte) Multifamily 200+ units development announcement or groundbreaking; LA/West Coast Multifamily 200+ units development announcement or groundbreaking; suburban Atlanta/Dallas/Houston residential development; Student Housing project 500+ beds (not units, beds) OR involving Core Spaces/Landmark/Greystar
-- "보통": general MF development plan announcement in other markets; small-scale groundbreaking under $50M and under 200 units outside Sun Belt; Student Housing project under 500 beds (not units, beds) not involving major platform
+- "높음": confirmed groundbreaking or broke-ground article for projects $50M+ or 200+ units; BTR/SFR/Multifamily permit filing or zoning approval; development in LA/Atlanta/Dallas/Houston/Phoenix; BTR/SFR groundbreaking or completion regardless of size; Sun Belt (Atlanta/Dallas/Houston/Phoenix/Charlotte) Multifamily 200+ units development announcement or groundbreaking; LA/West Coast Multifamily 200+ units development announcement or groundbreaking; suburban Atlanta/Dallas/Houston residential development; Student Housing project 500+ beds (not units, beds) OR involving Core Spaces/Landmark/Greystar; Active Adult groundbreaking or completion — Active Adult projects are typically smaller in scale than conventional multifamily, do not judge relevance by unit count alone
+- "보통": general MF development plan announcement in other markets; small-scale groundbreaking under $50M and under 200 units outside Sun Belt; Student Housing project under 500 beds (not units, beds) not involving major platform; Active Adult development plan announcement without confirmed groundbreaking
 - "낮음": vague development intent, speculative land acquisition article
 
 korean_summary rules:

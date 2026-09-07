@@ -208,7 +208,7 @@ def signal_monitor_section(df: pd.DataFrame, hide_paywalled: bool, date_from, da
         pattern = "|".join(tags)
         return series.str.contains(pattern, na=False)
 
-    residential_sectors = ["BTR", "SFR", "Multifamily", "Workforce Housing", "Affordable Housing"]
+    residential_sectors = ["BTR", "SFR", "Multifamily", "Active Adult", "Workforce Housing", "Affordable Housing"]
     residential = base[
         base["sector"].isin(residential_sectors) |
         has_tag(base["event_tags"], "rent_occupancy", "construction_start", "delivery", "permit")
