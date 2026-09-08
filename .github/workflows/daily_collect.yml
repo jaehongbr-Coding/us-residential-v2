@@ -77,24 +77,28 @@ jobs:
 
       - name: Collect articles
         if: steps.guard.outputs.skip == 'false'
+        shell: bash
         run: python collector.py | tee collector_output.log
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Classify articles
         if: steps.guard.outputs.skip == 'false'
+        shell: bash
         run: python classifier.py | tee classifier_output.log
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Geo tagging
         if: steps.guard.outputs.skip == 'false'
+        shell: bash
         run: python geo_tagger.py --mode incremental | tee geo_output.log
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Build archive index
         if: steps.guard.outputs.skip == 'false'
+        shell: bash
         run: python build_archive_index.py | tee archive_index_output.log
 
       - name: Cancel batch on workflow cancellation
