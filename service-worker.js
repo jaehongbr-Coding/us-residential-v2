@@ -36,10 +36,15 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
 
-  const isArticlesCsv = request.url.includes("articles.csv");
+  // articles.csv와 archive_index.json 둘 다 매일 밤 갱신된다. 나머지 요청과
+  // 같은 Cache First를 타면 한 번 캐시된 뒤로는 네트워크를 다시 확인하지
+  // 않아 PWA 설치 사용자에게 아카이브가 그 시점 그대로 굳는다 — index.html/
+  // manifest.json/아이콘 변경 시에만 CACHE_NAME이 갱신되므로(update_sw_version.yml)
+  // 데이터 파일 변경으로는 캐시가 무효화되지 않기 때문이다.
+  const isNetworkFirst = request.url.includes("articles.csv") || request.url.includes("archive_index.json");
 
-  if (isArticlesCsv) {
-    // Network First: 최신 기사 우선, 실패 시 캐시된 마지막 데이터 사용
+  if (isNetworkFirst) {
+    // Network First: 최신 데이터 우선, 실패 시 캐시된 마지막 데이터 사용
     event.respondWith(
       fetch(request)
         .then((response) => {
