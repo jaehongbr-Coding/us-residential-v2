@@ -429,4 +429,68 @@ Senior Housing 54.5%가 상위 — AA·Workforce·Senior는 전용 해결 경로
   하드코딩 차트 삭제, Chart.js CDN 로드 제거
 
 ---
+
+## 2026-09-08(4) : AA 관련성 기준 1차 수정 — 조여보니 다른 구멍이 보였다
+
+### 73.7%의 원인은 모델이 아니라 프롬프트였다
+[개발] 블록의 AA "높음" 줄에는 조건이 없었다. 같은 줄의 Student Housing은
+"500+ beds OR Core Spaces/Landmark/Greystar"로 조건이 붙는데, AA는
+"groundbreaking or completion"만 있으면 규모·자본·지역 무관하게 무조건
+높음이었다. 착공·준공 기사이면 그것으로 끝이었다. 모델이 프롬프트를
+잘못 읽은 게 아니라, 프롬프트가 정확히 그렇게 쓰여 있었다.
+
+착공/준공 확정, 기관자본 참여, Sun Belt(Atlanta/Dallas/Houston/Phoenix/
+Charlotte) 또는 LA/West Coast 위치 — 이미 관찰 가능한 세 조건 중 하나를
+만족할 때로 좁혔다. 새 수치나 임계치를 만들지 않았다 — AA 단지 규모의
+근거가 없고, classifier에 재분류 트리거가 없어 근거 없는 임계치는
+영구화되기 때문이다(예: "300세대 이상"을 만들었다면 그 300이라는
+숫자의 근거를 댈 수 없었을 것이고, 한번 박히면 못 바꾼다). 목표 비율도
+정하지 않았다 — 특정 %를 겨냥해 문구를 조정하는 것 자체가 임의 기준이기
+때문이다. 결과: 개발 카테고리 높음 100건 → 53건, AA 전체 높음
+75.6%(161/213) → 49.8%(105/211).
+
+### 미해결 결함 3건 — 이번 라운드에서 고치지 않았다
+
+**(1) 위치 단독 승급 23건(21.9%).** 사용자가 수정 전에 경고한 그대로
+확인됐다 — "같은 줄의 Multifamily는 Sun Belt에 200+ units 조건이
+붙는데 AA는 위치만으로 통과한다"는 우려가 실제로 재현됐다. 착공 확정도
+기관자본도 없이 "Texas City approves... after 2-year pause"(시의회
+승인 단계)나 "3,500-Home Margaritaville... Coming To Texas City"(계획
+발표 단계)처럼 확정되지 않은 단계의 기사가 Sun Belt 언급만으로 높음이
+됐다. 조건을 하나 좁히니 다른 조건이 그 빈자리를 메웠다.
+
+**(2) OR가 AND처럼 오적용 — 착공 확정 기사 8건이 부당 강등됐다.**
+프롬프트는 "다음 중 하나(OR)"라고 명시했는데, 강등된 56건 중 8건은
+rationale이 스스로 "건설 착공이 확인되었으나(Elk Township)" 라고
+인정하면서도 기관자본이나 Sun Belt/LA가 없다는 이유로 보통으로
+낮췄다 — 모델이 조건 하나로는 부족하다는 듯 다른 조건과의 결합을
+요구했다. 이번 수정의 목적은 부풀림 제거이지 AA 전체를 억제하는 게
+아니었으므로, 이 8건은 목적에 어긋나는 부작용이다.
+
+**(3) Known GP 오귀속 5건.** Greystar/Album을 "Known GP 계열"이라고
+rationale이 명시한 경우가 여전히 5건 있다 — Greystar는 PRIORITY 4의
+Known GP 목록(Kennedy Wilson/Harrison Street/PCCP/Blue Vista/
+Lionheart/NexMetro/Middleburg/Hillpointe)에 없다. AA/SH 경계 정의
+문단에 "Operating brands include: Overture, Album, Avenida..."라고
+브랜드명을 이미 명시해 둔 것이, 모델에게 이 브랜드들을 "주요 플레이어"
+급으로 각인시켜 Known GP와 혼동하게 만드는 것으로 보인다. 이번 라운드는
+PRIORITY 4·경계 정의 문단을 건드리지 않았으므로 그대로 남았다.
+
+### "부당 강등을 지적하라"는 검증 항목이 실제로 뭔가를 잡아냈다
+STEP 3 검증에 "새로 강등된 건 중 부당한 것이 있으면 지적하라"는 항목이
+없었다면 (2)는 발견되지 못했을 것이다 — 표본 확인 중 강등 사유
+rationale 자체가 착공 확정을 인정하면서 다른 조건을 추가로 요구하는
+모순을 담고 있어서 드러났다. 결과 숫자(75.6%→49.8%)만 봤다면 "성공"으로
+끝났을 검증이었다.
+
+### 다음 세션
+프롬프트를 추가 조정해 (1)(2)(3)을 다룰 예정이다. tmp_aa_before2.json/
+tmp_aa_after2.json/labels.db.bak4_*를 지우지 않고 남겨 다음 라운드의
+before/after 비교 기준으로 쓴다.
+
+### 커밋
+- 9b9beb6 classifier.py AA 관련성 기준 조건부화(1차)
+- 6cef00a labels.db/articles.csv/archive_index.json AA 211건 재분류 반영
+
+---
 (이후 작업은 이 아래에 날짜순으로 추가)
