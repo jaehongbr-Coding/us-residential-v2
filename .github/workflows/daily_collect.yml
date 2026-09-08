@@ -32,16 +32,33 @@ jobs:
         id: guard
         run: |
           git fetch origin main
-          TODAY=$(date -u +%Y-%m-%d)
           if [ "${{ github.event.inputs.force }}" = "true" ]; then
             echo "[RUN] force=true — 가드 무시하고 강제 실행"
             echo "skip=false" >> "$GITHUB_OUTPUT"
-          elif git log origin/main --format=%s -20 | grep -qF "auto: daily update $TODAY"; then
-            echo "[SKIP] 오늘($TODAY) 수집이 이미 완료됨 — 중복 실행 방지"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
           else
-            echo "[RUN] 오늘 첫 실행 — 수집 진행"
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            # 날짜 문자열(TODAY) 비교는 스케줄 발화가 자정을 넘겨 밀리면
+            # (예: 23:13 UTC → 다음날 00:13 UTC) 그 실행의 커밋 날짜가 다음날로
+            # 찍혀, 다음날 밤 정규 실행이 "오늘 이미 완료"로 오판되어 스킵되는
+            # 문제가 있었다. 날짜 경계 대신 직전 auto 커밋으로부터 경과 시간을
+            # 기준으로 판정한다 — 같은 밤 중복 트리거(수 분~수 시간 간격)는
+            # 걸러내되, 다음날 정규 실행(드리프트 포함 20시간 이상 간격)은
+            # 통과시킨다.
+            LAST_AUTO_TS=$(git log origin/main --grep="^auto: daily update" --format=%ct -n 1)
+            NOW_TS=$(date -u +%s)
+            if [ -z "$LAST_AUTO_TS" ]; then
+              echo "[RUN] 이전 auto 커밋 없음 — 실행 진행"
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+            else
+              HOURS_SINCE=$(( (NOW_TS - LAST_AUTO_TS) / 3600 ))
+              echo "직전 auto 커밋 이후 경과: ${HOURS_SINCE}시간"
+              if [ "$HOURS_SINCE" -lt 18 ]; then
+                echo "[SKIP] 직전 자동 수집이 ${HOURS_SINCE}시간 전에 이미 완료됨 — 중복 실행 방지"
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "[RUN] 직전 자동 수집으로부터 ${HOURS_SINCE}시간 경과 — 수집 진행"
+                echo "skip=false" >> "$GITHUB_OUTPUT"
+              fi
+            fi
           fi
 
       - name: Set up Python 3.11
@@ -60,21 +77,25 @@ jobs:
 
       - name: Collect articles
         if: steps.guard.outputs.skip == 'false'
-        run: python collector.py
+        run: python collector.py | tee collector_output.log
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Classify articles
         if: steps.guard.outputs.skip == 'false'
-        run: python classifier.py
+        run: python classifier.py | tee classifier_output.log
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Geo tagging
         if: steps.guard.outputs.skip == 'false'
-        run: python geo_tagger.py --mode incremental
+        run: python geo_tagger.py --mode incremental | tee geo_output.log
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Build archive index
+        if: steps.guard.outputs.skip == 'false'
+        run: python build_archive_index.py | tee archive_index_output.log
 
       - name: Cancel batch on workflow cancellation
         if: cancelled() && steps.guard.outputs.skip == 'false'
@@ -106,7 +127,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config merge.ours.driver true
 
-          git add articles.csv seen_index.db labels.db geo_tags.db "archive/*.csv"
+          git add articles.csv seen_index.db labels.db geo_tags.db archive_index.json "archive/*.csv"
           if git diff --cached --quiet; then
             echo "변경사항 없음. 커밋 스킵."
           else
@@ -162,3 +183,52 @@ jobs:
 
             git push
           fi
+
+      - name: Write run summary
+        if: always()
+        run: |
+          {
+            echo "### Daily Collect & Classify — $(date -u +%Y-%m-%d\ %H:%M) UTC"
+            echo ""
+            if [ "${{ steps.guard.outputs.skip }}" = "true" ]; then
+              echo "가드에 의해 스킵됨 (직전 auto 커밋 18시간 이내)"
+            elif [ ! -f collector_output.log ]; then
+              echo "이전 단계가 실행되지 않았거나 실패해 로그가 없습니다."
+            else
+              NEW_TOTAL=$(grep -oP '신규 저장: \K[0-9]+' collector_output.log | head -1)
+              SH_NEW=$(grep -oP 'Student Housing 신규: \K[0-9]+' collector_output.log | head -1)
+              PLAYER_NEW=$(grep -oP 'Player 신규: \K[0-9]+' collector_output.log | head -1)
+              NEW_TOTAL=${NEW_TOTAL:-?}
+              SH_NEW=${SH_NEW:-?}
+              PLAYER_NEW=${PLAYER_NEW:-?}
+              if [[ "$NEW_TOTAL" =~ ^[0-9]+$ && "$SH_NEW" =~ ^[0-9]+$ && "$PLAYER_NEW" =~ ^[0-9]+$ ]]; then
+                RSS_NEW=$((NEW_TOTAL - SH_NEW - PLAYER_NEW))
+              else
+                RSS_NEW="?"
+              fi
+
+              CLS_SUCCESS=$(grep -oP '성공: \K[0-9]+(?=건)' classifier_output.log 2>/dev/null | head -1)
+              CLS_FAIL=$(grep -oP '실패: \K[0-9]+(?=건)' classifier_output.log 2>/dev/null | head -1)
+              CLS_SUCCESS=${CLS_SUCCESS:-0 또는 스킵}
+              CLS_FAIL=${CLS_FAIL:-0 또는 스킵}
+
+              GEO_LINE=$(grep -oP '완료: 성공 \K[0-9]+ / 실패 [0-9]+' geo_output.log 2>/dev/null | head -1)
+              GEO_LINE=${GEO_LINE:-확인 불가}
+
+              ARCHIVE_TOTAL=$(grep -oP '레코드 \K[0-9]+(?=건)' archive_index_output.log 2>/dev/null | head -1)
+              ARCHIVE_TOTAL=${ARCHIVE_TOTAL:-확인 불가}
+
+              LATEST_PUB=$(python -c "import archive_manager; rows = archive_manager.read_archive(); dates = [r.get('published_at','') for r in rows if r.get('published_at')]; print(max(dates)[:10] if dates else '?')" 2>/dev/null || echo "확인 불가")
+
+              echo "| 항목 | 값 |"
+              echo "|---|---|"
+              echo "| 신규 저장 | ${NEW_TOTAL}건 |"
+              echo "| ㄴ Student Housing | ${SH_NEW}건 |"
+              echo "| ㄴ Player | ${PLAYER_NEW}건 |"
+              echo "| ㄴ RSS | ${RSS_NEW}건 |"
+              echo "| 분류 성공/실패 | ${CLS_SUCCESS} / ${CLS_FAIL} |"
+              echo "| geo 성공/실패 | ${GEO_LINE} |"
+              echo "| archive_index 총건수 | ${ARCHIVE_TOTAL}건 |"
+              echo "| 원장 최신 published_at | ${LATEST_PUB} |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
