@@ -280,3 +280,63 @@ def test_abbreviations_removed_after_175_way_collision_check(abbr):
     (2026.09 Phase 2.5 2차). 제거 후 재발 방지 — 되살아나면 이 테스트가 실패한다."""
     out = resolve([{"name": abbr, "state": None, "type": "university", "primary": True}], "local")
     assert out["geo_confidence"] not in ("exact", "inferred")
+
+
+# --- 2026.09 secondary 폴백 오판정 회귀 가드 (Medford/Georgetown) ---
+
+def test_secondary_fallback_without_article_state_does_not_guess_medford():
+    """⚠️ 회귀 가드: 뉴저지 Evesham 기사(Evesboro-Medford Road)에서 secondary
+    "Medford"를 무주로 조회하면 크로스워크에 유일하게 등재된 Medford, OR
+    (CBSA 32780)로 확정돼버렸다(2026.09 실측, article_id 64d164856186).
+    기사 전체에 state 단서가 전혀 없으므로(Evesham/Evesboro/Medford 모두
+    state=None) secondary 폴백은 이 place를 조회하지 않고 미해결로 남겨야
+    한다 — 근거 없는 확정보다 미해결이 낫다(I8)."""
+    out = resolve([
+        {"name": "Evesham", "state": None, "type": "city", "primary": True},
+        {"name": "Evesboro", "state": None, "type": "city", "primary": False},
+        {"name": "Medford", "state": None, "type": "city", "primary": False},
+    ], "local")
+    assert out["geo_cbsa_code"] != "32780"  # Medford, OR로 단정하면 안 된다
+    assert out["geo_confidence"] == "none"
+
+
+def test_secondary_fallback_without_article_state_does_not_guess_georgetown():
+    """⚠️ 회귀 가드: 워싱턴 D.C. 기사(동네 이름 Georgetown)에서 secondary
+    "Georgetown"을 무주로 조회하면 크로스워크에 유일하게 등재된 Georgetown, TX
+    (Austin CBSA 12420)로 확정돼버렸다(2026.09 실측, article_id 0a3a645b5660).
+    "D.C." 자체도 크로스워크에 없어(별도 alias 미등재) state를 못 얻으므로
+    기사 전체에 state 단서가 없다 — 미해결로 남아야 한다(I8)."""
+    out = resolve([
+        {"name": "D.C.", "state": None, "type": "city", "primary": True},
+        {"name": "Georgetown", "state": None, "type": "neighborhood", "primary": False},
+    ], "local")
+    assert out["geo_cbsa_code"] != "12420"  # Georgetown, TX(Austin)로 단정하면 안 된다
+    assert out["geo_confidence"] == "none"
+
+
+def test_secondary_fallback_uses_article_state_context():
+    """맥락 상속이 실제로 작동하는 양성 사례 — primary가 명시 state를 갖고
+    secondary는 없을 때, secondary가 그 state로 조회돼 해결된다."""
+    out = resolve([
+        {"name": "Quincy", "state": "MA", "type": "city", "primary": True},
+        {"name": "Des Moines", "state": None, "type": "city", "primary": False},
+    ], "local")
+    # Des Moines, MA는 존재하지 않으므로 MA 맥락으로 조회하면 실패해야 한다 —
+    # Des Moines, IA(크로스워크 유일 후보)로 잘못 확정되지 않는지 확인.
+    assert out["geo_cbsa_code"] != "19780"  # Des Moines, IA로 단정하면 안 된다
+
+
+def test_secondary_fallback_multiple_article_states_does_not_guess_city():
+    """맥락 주가 복수(NJ/NE)일 때 state 없는 secondary("Springfield")를 그중
+    하나로 임의 확정하지 않는다. 이 사례는 실제로는 targets(New Jersey/
+    Nebraska)가 둘 다 type=="state"라 state 폴백이 먼저 개입해
+    geo_scope=='state'/geo_state=='NJ|NE'로 처리된다 — Springfield 자체를
+    특정 CBSA로 단정하지 않는다는 점만 확인한다(exact/inferred로 특정
+    도시가 찍히면 안 된다)."""
+    out = resolve([
+        {"name": "New Jersey", "state": "NJ", "type": "state", "primary": True},
+        {"name": "Nebraska", "state": "NE", "type": "state", "primary": True},
+        {"name": "Springfield", "state": None, "type": "city", "primary": False},
+    ], "regional")
+    assert out["geo_confidence"] not in ("exact", "inferred")
+    assert out["geo_cbsa_code"] == ""

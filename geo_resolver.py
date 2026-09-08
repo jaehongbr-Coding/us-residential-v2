@@ -8,7 +8,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from geo_norm import norm, norm_university, campus_base
+from geo_norm import norm, norm_university, campus_base, STATE_ABBR
 
 CROSSWALK = Path(__file__).resolve().parent / "data/geo/cbsa_crosswalk.json"
 REGIONAL_TERMS = {"sun belt", "sunbelt", "southeast", "midwest", "northeast",
@@ -127,24 +127,30 @@ def _lookup_one(name: str, state: str | None) -> tuple[list[str], str, list[str]
     return [], "none", []
 
 
-def resolve(places: list[dict], scope: str, source_hint: tuple[str, str] | None = None) -> dict:
-    """Stage A 출력 -> geo_* 컬럼 값 dict.
+def _overall_confidence(codes: list[str], confs: list[str]) -> str:
+    """codes/confs로부터 종합 confidence를 보수적으로 판정한다 (기존 resolve()에서
+    분리 — 2026.09 state/secondary 폴백에서 재사용하기 위함, 로직 변경 없음).
 
-    source_hint: (cbsa_code, state) 튜플. collector.py의 source 라벨
-    (예: "Student Housing — University of Missouri (MO)")에서 호출부가
-    도출해 넘긴다(geo_store.derive_source_hint 참조). 본문 추론이 아니라
-    수집 메타데이터이므로 I8 위반은 아니지만 100% 확실하지도 않으므로,
-    Stage B가 "ambiguous"로 판정했고 그 모호성의 후보 코드 목록 안에
-    source_hint의 코드가 있을 때만 그것을 채택하고 confidence를
-    "source_inferred"로 표기한다. 후보 밖이면 절대 채택하지 않고 ambiguous를
-    유지한다(I8). source_hint=None이면 이전 동작과 완전히 동일하다."""
-    xw = _xw()
+    order.index로 min()을 매기면 confs가 전부 "ambiguous"/"none"뿐이고
+    codes가 비어 있을 때도 min(..., default="inferred")가 "inferred"를
+    반환해버려 codes가 없는데 confidence만 "inferred"로 찍히는 모순이
+    생긴다(Plan.md §5.4 원안의 버그). 아래처럼 codes 유무로 먼저 분기하고,
+    codes가 있을 때만 exact/inferred 중에서 최저 등급을 고른다."""
+    order = ["exact", "inferred", "ambiguous", "none"]
+    if codes:
+        exact_or_inferred = [c for c in confs if c in ("exact", "inferred")]
+        return min(exact_or_inferred, key=order.index) if exact_or_inferred else "inferred"
+    elif "ambiguous" in confs:
+        return "ambiguous"
+    return "none"
+
+
+def _aggregate(targets: list[dict], xw: dict):
+    """place 목록 하나를 조회해 (codes, titles, states, raws, confs, ambiguous_candidates)를
+    반환한다. resolve()의 기존 for-loop를 그대로 함수로 뺀 것 — 2026.09 secondary
+    폴백에서 targets 대신 secondaries에 대해 동일 로직을 재사용하기 위함."""
     codes, titles, states, raws, confs = [], [], [], [], []
     ambiguous_candidates: set[str] = set()
-
-    # primary가 있으면 primary만, 없으면 전부
-    targets = [p for p in places if p.get("primary")] or places
-
     for p in targets:
         raw = (p.get("name") or "").strip()
         if raw:
@@ -160,21 +166,140 @@ def resolve(places: list[dict], scope: str, source_hint: tuple[str, str] | None 
                 for s in xw["cbsa"][c]["states"]:
                     if s not in states:
                         states.append(s)
+    return codes, titles, states, raws, confs, ambiguous_candidates
 
-    # 전체 confidence = 가장 낮은 등급으로 보수적 판정.
-    # order.index로 min()을 매기면 confs가 전부 "ambiguous"/"none"뿐이고
-    # codes가 비어 있을 때도 min(..., default="inferred")가 "inferred"를
-    # 반환해버려 codes가 없는데 confidence만 "inferred"로 찍히는 모순이
-    # 생긴다(Plan.md §5.4 원안의 버그). 아래처럼 codes 유무로 먼저 분기하고,
-    # codes가 있을 때만 exact/inferred 중에서 최저 등급을 고른다.
-    order = ["exact", "inferred", "ambiguous", "none"]
-    if codes:
-        exact_or_inferred = [c for c in confs if c in ("exact", "inferred")]
-        overall = min(exact_or_inferred, key=order.index) if exact_or_inferred else "inferred"
-    elif "ambiguous" in confs:
-        overall = "ambiguous"
-    else:
-        overall = "none"
+
+def _aggregate_secondary_with_context(secondaries: list[dict], xw: dict, article_states: list[str]):
+    """secondary 폴백 전용 조회. _aggregate()와 동일하되, place 자체에 state가
+    없을 때 place 자체를 무주 조회하지 않고 "기사 내 다른 place가 명시한 state"
+    (article_states)로만 시도한다. 2026.09 Medford(NJ 기사가 secondary
+    "Medford"를 무주로 조회해 Medford, OR로 확정됐던 사고)·Georgetown(D.C. 기사가
+    "Georgetown"을 무주로 조회해 Georgetown, TX로 확정됐던 사고) 대응.
+
+    article_states가 비어 있으면(기사 전체에 state 단서가 없으면) 그 place는
+    아예 조회하지 않고 결과 없음으로 둔다 — "근거 없는 확정보다 미해결이 낫다"
+    (모호하면 채택하지 않는다, I8과 동일한 정신). place 자체가 state를 갖고
+    있으면 이 함수도 기존과 완전히 동일하게 그 state로 조회한다(변경 없음).
+
+    article_states가 여럿이면 각각 시도해 서로 다른 CBSA가 하나라도 갈리면
+    (found_codes가 2개 이상) 채택하지 않는다 — 후보 복수 시 첫 번째를 확정하지
+    않는다는 원칙(I8)을 기사 단위 state 후보에도 동일하게 적용."""
+    codes, titles, states, raws, confs = [], [], [], [], []
+    ambiguous_candidates: set[str] = set()
+    for p in secondaries:
+        raw = (p.get("name") or "").strip()
+        if raw:
+            raws.append(raw)
+        own_state = p.get("state")
+        if own_state:
+            cs, conf, cands = _lookup_one(raw, own_state)
+        elif len(article_states) == 1:
+            cs, conf, cands = _lookup_one(raw, article_states[0])
+        elif len(article_states) > 1:
+            found_codes: set[str] = set()
+            for cst in article_states:
+                cs2, conf2, _cands2 = _lookup_one(raw, cst)
+                if conf2 in ("exact", "inferred") and cs2:
+                    found_codes.update(cs2)
+            if len(found_codes) == 1:
+                cs, conf, cands = list(found_codes), "inferred", list(found_codes)
+            else:
+                cs, conf, cands = [], "none", []
+        else:
+            # 기사 전체에 state 단서가 없다 — 무주 조회 자체를 하지 않는다(보류).
+            cs, conf, cands = [], "none", []
+        confs.append(conf)
+        if conf == "ambiguous":
+            ambiguous_candidates.update(cands)
+        for c in cs:
+            if c not in codes:
+                codes.append(c)
+                titles.append(xw["cbsa"][c]["title"])
+                for s in xw["cbsa"][c]["states"]:
+                    if s not in states:
+                        states.append(s)
+    return codes, titles, states, raws, confs, ambiguous_candidates
+
+
+def resolve(places: list[dict], scope: str, source_hint: tuple[str, str] | None = None) -> dict:
+    """Stage A 출력 -> geo_* 컬럼 값 dict.
+
+    source_hint: (cbsa_code, state) 튜플. collector.py의 source 라벨
+    (예: "Student Housing — University of Missouri (MO)")에서 호출부가
+    도출해 넘긴다(geo_store.derive_source_hint 참조). 본문 추론이 아니라
+    수집 메타데이터이므로 I8 위반은 아니지만 100% 확실하지도 않으므로,
+    Stage B가 "ambiguous"로 판정했고 그 모호성의 후보 코드 목록 안에
+    source_hint의 코드가 있을 때만 그것을 채택하고 confidence를
+    "source_inferred"로 표기한다. 후보 밖이면 절대 채택하지 않고 ambiguous를
+    유지한다(I8). source_hint=None이면 이전 동작과 완전히 동일하다.
+
+    2026.09 두 폴백 추가 (둘 다 1차 조회가 "none"으로 완전히 실패했을 때만
+    발동 — 이미 exact/inferred/ambiguous로 판정된 건에는 절대 개입하지 않는다.
+    "기존에 해결된 건을 퇴화시키지 않는다"는 원칙 그대로 적용):
+
+    1) secondary 폴백 — primary가 있어 secondary가 버려진 채로 1차 조회가
+       실패했을 때만, 버려진 secondary들을 조회한다. secondary들이 서로 다른
+       CBSA로 복수 해결되면 채택하지 않고 ambiguous로 남긴다(첫 번째를
+       확정하지 않는다, I8). secondary 자체에 state가 없으면 무주 조회하지
+       않고 "같은 기사 내 다른 place가 명시한 state"(article_states)로만
+       시도한다 — 2026.09 Medford/Georgetown 오판정(주 없는 secondary가
+       크로스워크에 유일하게 등재된, 하지만 틀린 동명 도시로 확정된 사고)
+       대응. 기사 전체에 state 단서가 없으면 그 secondary는 조회 자체를
+       하지 않고 결과 없음으로 둔다(_aggregate_secondary_with_context 참조).
+    2) state 폴백 — 그래도 실패했고, 1차 targets 전원이 type=="state"일 때만
+       geo_norm.STATE_ABBR(또는 place 자체의 2자리 state 필드)로 주 코드만
+       채운다. CBSA/타이틀은 채우지 않는다(정밀도를 부풀리지 않는다) —
+       geo_scope를 'state'로, geo_confidence도 'state'로 표기해 CBSA 수준
+       exact/inferred와 구분한다.
+    """
+    xw = _xw()
+
+    has_primary = any(p.get("primary") for p in places)
+    targets = [p for p in places if p.get("primary")] if has_primary else places
+    secondaries = [p for p in places if not p.get("primary")] if has_primary else []
+
+    codes, titles, states, raws, confs, ambiguous_candidates = _aggregate(targets, xw)
+    overall = _overall_confidence(codes, confs)
+    geo_scope_out = scope or "none"
+
+    # 1) secondary 폴백 — primary(targets)가 완전히 실패("none")했고 버려진
+    #    secondary가 있을 때만 시도한다. ambiguous였던 경우는 건드리지 않는다
+    #    (I8 — 이미 "모른다"고 판정한 것을 secondary로 덮어쓰지 않는다).
+    if overall == "none" and secondaries:
+        article_states = sorted({
+            (p.get("state") or "").strip().upper()
+            for p in places if p.get("state")
+        })
+        sec_codes, sec_titles, sec_states, sec_raws, sec_confs, sec_ambig = \
+            _aggregate_secondary_with_context(secondaries, xw, article_states)
+        distinct_sec_codes = set(sec_codes)
+        if len(distinct_sec_codes) == 1:
+            codes, titles, states = sec_codes, sec_titles, sec_states
+            raws = raws + sec_raws
+            overall = _overall_confidence(codes, sec_confs)
+        elif len(distinct_sec_codes) > 1:
+            overall = "ambiguous"
+            ambiguous_candidates.update(distinct_sec_codes)
+        # distinct_sec_codes가 0개(전부 실패)면 overall은 "none"으로 유지되고
+        # 아래 state 폴백으로 폴스루한다.
+
+    # 2) state 폴백 — 여전히 완전히 실패("none")했고, 1차 targets 전원이
+    #    type=="state"일 때만. secondary 폴백으로 이미 해결/ambiguous가 됐으면
+    #    건드리지 않는다.
+    if overall == "none" and targets and all(p.get("type") == "state" for p in targets):
+        state_codes: list[str] = []
+        for p in targets:
+            raw_name = (p.get("name") or "").strip()
+            st = (p.get("state") or "").strip().upper()
+            if not (st and len(st) == 2):
+                st = STATE_ABBR.get(norm(raw_name), "")
+            if st and st not in state_codes:
+                state_codes.append(st)
+        if state_codes:
+            states = state_codes
+            geo_scope_out = "state"
+            overall = "state"
+            # codes/titles는 비운 채로 둔다 — state만 알 뿐 CBSA는 모른다.
 
     # source_inferred 승격: ambiguous일 때만, 후보 목록 안에 있을 때만 (I8)
     if overall == "ambiguous" and source_hint is not None:
@@ -190,6 +315,6 @@ def resolve(places: list[dict], scope: str, source_hint: tuple[str, str] | None 
         "geo_cbsa_code":  "|".join(codes),
         "geo_cbsa_title": "|".join(titles),
         "geo_state":      "|".join(states),
-        "geo_scope":      scope or "none",
+        "geo_scope":      geo_scope_out,
         "geo_confidence": overall,
     }
