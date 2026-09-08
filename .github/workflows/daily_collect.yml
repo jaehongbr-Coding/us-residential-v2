@@ -42,7 +42,8 @@ jobs:
             # 문제가 있었다. 날짜 경계 대신 직전 auto 커밋으로부터 경과 시간을
             # 기준으로 판정한다 — 같은 밤 중복 트리거(수 분~수 시간 간격)는
             # 걸러내되, 다음날 정규 실행(드리프트 포함 20시간 이상 간격)은
-            # 통과시킨다.
+            # 통과시킨다. 임계값 12h는 관측된 구 중복쌍 최대 간격(1.82h)의
+            # 6배, 정상 야간 간격 최소치(21.27h)와 9시간 여유를 둔 값이다.
             LAST_AUTO_TS=$(git log origin/main --grep="^auto: daily update" --format=%ct -n 1)
             NOW_TS=$(date -u +%s)
             if [ -z "$LAST_AUTO_TS" ]; then
@@ -51,7 +52,7 @@ jobs:
             else
               HOURS_SINCE=$(( (NOW_TS - LAST_AUTO_TS) / 3600 ))
               echo "직전 auto 커밋 이후 경과: ${HOURS_SINCE}시간"
-              if [ "$HOURS_SINCE" -lt 18 ]; then
+              if [ "$HOURS_SINCE" -lt 12 ]; then
                 echo "[SKIP] 직전 자동 수집이 ${HOURS_SINCE}시간 전에 이미 완료됨 — 중복 실행 방지"
                 echo "skip=true" >> "$GITHUB_OUTPUT"
               else
@@ -195,7 +196,7 @@ jobs:
             echo "### Daily Collect & Classify — $(date -u +%Y-%m-%d\ %H:%M) UTC"
             echo ""
             if [ "${{ steps.guard.outputs.skip }}" = "true" ]; then
-              echo "가드에 의해 스킵됨 (직전 auto 커밋 18시간 이내)"
+              echo "가드에 의해 스킵됨 (직전 auto 커밋 12시간 이내)"
             elif [ ! -f collector_output.log ]; then
               echo "이전 단계가 실행되지 않았거나 실패해 로그가 없습니다."
             else
