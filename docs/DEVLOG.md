@@ -97,4 +97,125 @@ resolve-only로 API 재호출 없이 무료 재매핑이 가능하다.
 - 2906314 가드 임계값 12h, *.log gitignore
 
 ---
+
+## 2026-09-08 : geo resolver — Stage A는 맞았고 Stage B가 틀렸다
+
+### 발단
+AA 213건 중 152건이 geo 미해결이라 Stage A(지명 추출) 문제로 보였다.
+조사 결과 152건 중 88건은 Stage A가 "Annapolis, MD"·"Tucson" 같은 지명을
+정확히 뽑았는데 Stage B(resolver)가 매칭에 실패한 것이었다. 원인은 둘 —
+크로스워크가 CBSA 타이틀의 principal city만 인덱싱해 소도시가 구조적으로
+빠지는 것, 그리고 Stage A 스키마가 `type: state`를 정의하는데 resolver에
+그 처리 경로 자체가 없는 것. 전 섹터 공통 문제였다(Multifamily도 56.7%
+미해결). stage_a_json이 보존돼 있어 resolve-only로 API 재호출 없이
+무료 재매핑이 가능했다.
+
+### Austin 33건은 버그가 아니었다
+primary로 나온 "Austin"이 33건 실패했는데, 33건 전부 state 필드가 없었다.
+Austin, TX(12420)와 Austin, MN 두 후보가 있어 ambiguous로 멈추는 것은
+설계대로 작동한 것 — Columbia/Miami/Glendale과 같은 안전장치다. 이건
+"실패로 세지 않은 실패"다.
+
+### NYC 110건 — Oklahoma City 오판정을 막으려 되돌린 규칙의 부작용
+크로스워크의 실제 키는 CBSA 타이틀 첫 세그먼트인 "New York"뿐이다.
+"New York City"가 정확히 추출되고도 안 풀린 건 항목 부재가 아니라 문자열
+불일치였다 — geo_norm.norm()이 " city" 접미사를 일괄 제거하지 않는 이유가
+"Oklahoma City"/"Kansas City"/"Carson City"를 bare 주 이름·다른 도시와
+충돌시키지 않기 위해서였다(2026.09 이전 라운드에 이미 되돌린 규칙).
+전역 규칙을 다시 건드리는 대신 "New York City"/"NYC" alias 2개만
+추가했다 — 가리키는 대상이 유일해 UW/USC류 통칭 충돌 위험이 없다.
+재빌드 전후 diff로 alias_idx 2건 추가 외 전부 동일함을 확인했다
+(commit 1de44bf).
+
+### secondary 폴백이 Manhattan,KS류 위험의 노출 범위를 넓혔다
+primary가 실패했을 때 버려졌던 secondary를 조회하는 폴백을 추가했는데,
+1차 구현(secondary를 무주로 그대로 조회)이 두 건의 확정 오판정을 냈다:
+- Evesham(NJ) 기사의 secondary "Medford"가 크로스워크에 유일 등재된
+  Medford, OR로 확정됨(article_id 64d164856186)
+- 워싱턴 D.C. 기사의 secondary "Georgetown"이 Georgetown, TX(Austin)로
+  확정됨(article_id 0a3a645b5660)
+
+둘 다 CLAUDE.md가 이미 기록한 유형이다 — 크로스워크에 후보가 여럿이면
+모호성 체크가 잡지만, 후보가 하나뿐인데 그게 틀리면 원리적으로 못 잡는다
+(Manhattan,KS 116건 오판정과 같은 계열). 대도시 목록 같은 임의 기준으로
+"확인된 것만" 막는 방법은 기각했다 — 못 본 오판정이 남기 때문이다.
+
+해법은 기사 내 주 맥락 상속이었다: secondary에 state가 없으면 같은
+stage_a_json의 다른 place가 명시한 state로만 조회하고, 맥락이 아예
+없으면 조회 자체를 하지 않고 미해결로 남긴다. 두 사례 모두 stage_a_json
+전체에 state 단서가 없어서(Evesham/Evesboro/Medford, D.C./Georgetown
+전부 state=null) 이 폴백을 적용해도 정답을 맞히지는 못한다 — 하지만
+목표는 Medford를 오리건으로 보내지 않는 것이었지 뉴저지로 맞히는 것이
+아니었다. 틀린 답을 빈칸으로 바꾸는 것이 이번 수정이 달성한 것이다.
+
+### "0.32%"는 분모가 틀린 수치였다
+처음엔 확정 오판정 2건을 627건(신규 해결 전체) 대비로 계산해 0.32%라고
+보고했다. 사용자가 정정했다 — 위험 모집단은 627이 아니라 "주 없는
+secondary 매칭" 194건이고, 표본 검토였으므로 2건은 하한값이다. 194건
+기준 최소 1.0%다.
+
+실제로 하한이었다. 맥락 상속 적용 전, "다른 place에 명시 state가 있는"
+81건(애초엔 안전하다고 가정한 그룹)을 맥락 검증으로 재조회했더니 그중
+최소 8건이 이미 틀린 답이었다는 게 드러났다 — Wellington, FL 기사가
+Seattle로, Falls Church, VA 기사가 Los Angeles로, Northern Virginia
+기사가 Boston으로, Bal Harbour, FL 기사가 New York City로, Kennesaw, GA
+기사가 Dallas로 확정돼 있었다. 명시 state가 "존재한다"는 것과 그 state가
+"실제로 사용됐다"는 것은 다른 얘기였다 — 예전 무주 조회는 기사에 state
+정보가 있어도 그걸 안 쓰고 크로스워크에서 유일하게 걸리는 아무 후보나
+집었다. 확정 오판정은 최소 2+8=10건이며, 전수 감사가 아니므로 이 역시
+하한이다.
+
+### 맥락 상속 커버리지 측정 — (a)+(b)는 과반에 못 미쳤다
+"주 없는 secondary 매칭" 194건을 세 갈래로 나눴다: (a) 다른 place에
+명시 state 있음 81건(42.1%), (b) 명시는 없으나 다른 place가 크로스워크로
+해결돼 주를 역산 가능 3건(1.5%), (c) 기사 전체에 주 단서 전혀 없음
+110건(56.7%). (a)+(b)=84건(43.3%)로 과반에 못 미쳤고, (c)가 과반이었다.
+구현은 (a)만 커버한다(STEP 2 스펙이 "다른 place의 state 필드"만 수집하도록
+명시했고, (b)는 크로스워크 역산이라는 별도 메커니즘이 필요해 이번
+라운드 범위 밖으로 남겼다).
+
+### "정답을 못 찾는 것"과 "틀린 답을 내는 것"은 다른 문제다
+(c) 110건은 이번 수정으로 구제되지 않는다 — 근거가 없으므로 미해결로
+남는 것이 맞다. 이건 실패가 아니라 설계다: 기사에 주 단서가 없으면
+맞힐 방법이 없고, 없는 근거로 확정하는 것 자체가 Manhattan,KS류 사고의
+원인이었다. 검색 화면 관점에서도 누락(빈칸)은 설명 가능하지만 오답은
+설명되지 않는다 — "SC + Active Adult" 조회에 틀린 지역의 기사가 섞이면
+화면 전체의 신뢰가 무너진다. (c) 110건은 미해결 부채로 남는다.
+
+### source_inferred — 진단만 하고 이번 라운드에 쓰지 않았다
+geo_confidence=='source_inferred' 66건이 이미 있다. `geo_store.
+derive_source_hint()`가 "Student Housing — <대학명> (<주>)" 형식 소스에서
+`geo_aliases.yaml`의 universities 섹션(154개 대학)을 조회해 (CBSA, 주)
+힌트를 주는 기존 메커니즘이다. (c) 110건 중 이 형식 소스는 18건뿐이고
+나머지 92건(Connect CRE/Bisnow/LA Urbanize/YieldPro 등)은 애초에 이
+정규식에 안 걸려 힌트를 받을 수 없다. Evesham(64d164856186)의 source는
+"Player — Active Adult — age-restricted", Georgetown(0a3a645b5660)의
+source는 "Bisnow"다 — 즉 이번에 문제가 된 두 사례는 이 메커니즘이 있어도
+구제되지 않았을 것이다. 또한 source_inferred 승격 코드(geo_resolver.py)는
+`overall == "ambiguous"`일 때만 발동하는데, 맥락 상속이 실패하면 결과는
+"ambiguous"가 아니라 "none"이라 이 승격 경로 자체가 지금 구조로는
+적용되지 않는다. 이번 라운드에 구현하지 않았다 — 다음 라운드 판단 대상.
+
+### 부수 발견 — Stage A가 가끔 주 이름을 2자리 코드가 아닌 전체 이름으로 낸다
+맥락 상속 검증 중 발견: 일부 stage_a_json이 `"state": "Illinois"`처럼
+전체 이름을 쓴다(정상은 `"IL"`). 크로스워크의 모든 state 비교는 2자리
+코드 기준이라 이런 place는 자기 state로도, 맥락으로도 매칭되지 않는다.
+Skokie(IL)/Sheboygan(WI)/Arvada(CO) 3건이 이 문제로 이전엔 우연히 맞는
+답(무주 secondary가 크로스워크에서 유일하게 걸린 게 하필 정답)을 냈다가
+이번엔 보수적으로 미해결 처리됐다 — 틀린 게 아니라 이번 라운드가 검증을
+못 통과시킨 것이다. 손대지 않았다. 별건으로 남긴다.
+
+### 결과
+resolve-only 재실행(API 호출 없음), 실질 미해결 3,943 → 3,432건(511건
+해소). 기여분: state 폴백 217 / NYC alias(primary) 102 / NYC alias
+(secondary) 5 / secondary 폴백(맥락 상속) 187. 퇴화 검증 0건.
+tests/test_geo_resolver.py 51 baseline + 4 신규 = 55/55.
+"SC"+"Active Adult" 조회 3건(무변화 — 신규 해결 25건 중 SC 없음).
+
+### 커밋
+- a1a05da geo resolver state/secondary 폴백 + 회귀 테스트 4건
+- 1de44bf New York City/NYC alias 추가
+- 8af5dc9 resolve-only 재매핑 (실질 미해결 511건 해소)
+
+---
 (이후 작업은 이 아래에 날짜순으로 추가)
