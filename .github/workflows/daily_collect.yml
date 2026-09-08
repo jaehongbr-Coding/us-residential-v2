@@ -102,6 +102,57 @@ jobs:
         shell: bash
         run: python build_archive_index.py | tee archive_index_output.log
 
+      - name: Write run summary
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p logs
+          {
+            echo "### Daily Collect & Classify — $(date -u +%Y-%m-%d\ %H:%M) UTC"
+            echo ""
+            if [ "${{ steps.guard.outputs.skip }}" = "true" ]; then
+              echo "가드에 의해 스킵됨 (직전 auto 커밋 12시간 이내)"
+            elif [ ! -f collector_output.log ]; then
+              echo "이전 단계가 실행되지 않았거나 실패해 로그가 없습니다."
+            else
+              NEW_TOTAL=$(grep -oP '신규 저장: \K[0-9]+' collector_output.log | head -1)
+              SH_NEW=$(grep -oP 'Student Housing 신규: \K[0-9]+' collector_output.log | head -1)
+              PLAYER_NEW=$(grep -oP 'Player 신규: \K[0-9]+' collector_output.log | head -1)
+              NEW_TOTAL=${NEW_TOTAL:-?}
+              SH_NEW=${SH_NEW:-?}
+              PLAYER_NEW=${PLAYER_NEW:-?}
+              if [[ "$NEW_TOTAL" =~ ^[0-9]+$ && "$SH_NEW" =~ ^[0-9]+$ && "$PLAYER_NEW" =~ ^[0-9]+$ ]]; then
+                RSS_NEW=$((NEW_TOTAL - SH_NEW - PLAYER_NEW))
+              else
+                RSS_NEW="?"
+              fi
+
+              CLS_SUCCESS=$(grep -oP '성공: \K[0-9]+(?=건)' classifier_output.log 2>/dev/null | head -1)
+              CLS_FAIL=$(grep -oP '실패: \K[0-9]+(?=건)' classifier_output.log 2>/dev/null | head -1)
+              CLS_SUCCESS=${CLS_SUCCESS:-0 또는 스킵}
+              CLS_FAIL=${CLS_FAIL:-0 또는 스킵}
+
+              GEO_LINE=$(grep -oP '완료: 성공 \K[0-9]+ / 실패 [0-9]+' geo_output.log 2>/dev/null | head -1)
+              GEO_LINE=${GEO_LINE:-확인 불가}
+
+              ARCHIVE_TOTAL=$(grep -oP '레코드 \K[0-9]+(?=건)' archive_index_output.log 2>/dev/null | head -1)
+              ARCHIVE_TOTAL=${ARCHIVE_TOTAL:-확인 불가}
+
+              LATEST_PUB=$(python -c "import archive_manager; rows = archive_manager.read_archive(); dates = [r.get('published_at','') for r in rows if r.get('published_at')]; print(max(dates)[:10] if dates else '?')" 2>/dev/null || echo "확인 불가")
+
+              echo "| 항목 | 값 |"
+              echo "|---|---|"
+              echo "| 신규 저장 | ${NEW_TOTAL}건 |"
+              echo "| ㄴ Student Housing | ${SH_NEW}건 |"
+              echo "| ㄴ Player | ${PLAYER_NEW}건 |"
+              echo "| ㄴ RSS | ${RSS_NEW}건 |"
+              echo "| 분류 성공/실패 | ${CLS_SUCCESS} / ${CLS_FAIL} |"
+              echo "| geo 성공/실패 | ${GEO_LINE} |"
+              echo "| archive_index 총건수 | ${ARCHIVE_TOTAL}건 |"
+              echo "| 원장 최신 published_at | ${LATEST_PUB} |"
+            fi
+          } | tee logs/last_run.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Cancel batch on workflow cancellation
         if: cancelled() && steps.guard.outputs.skip == 'false'
         env:
@@ -132,7 +183,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config merge.ours.driver true
 
-          git add articles.csv seen_index.db labels.db geo_tags.db archive_index.json "archive/*.csv"
+          git add articles.csv seen_index.db labels.db geo_tags.db archive_index.json logs/last_run.md "archive/*.csv"
           if git diff --cached --quiet; then
             echo "변경사항 없음. 커밋 스킵."
           else
@@ -188,52 +239,3 @@ jobs:
 
             git push
           fi
-
-      - name: Write run summary
-        if: always()
-        run: |
-          {
-            echo "### Daily Collect & Classify — $(date -u +%Y-%m-%d\ %H:%M) UTC"
-            echo ""
-            if [ "${{ steps.guard.outputs.skip }}" = "true" ]; then
-              echo "가드에 의해 스킵됨 (직전 auto 커밋 12시간 이내)"
-            elif [ ! -f collector_output.log ]; then
-              echo "이전 단계가 실행되지 않았거나 실패해 로그가 없습니다."
-            else
-              NEW_TOTAL=$(grep -oP '신규 저장: \K[0-9]+' collector_output.log | head -1)
-              SH_NEW=$(grep -oP 'Student Housing 신규: \K[0-9]+' collector_output.log | head -1)
-              PLAYER_NEW=$(grep -oP 'Player 신규: \K[0-9]+' collector_output.log | head -1)
-              NEW_TOTAL=${NEW_TOTAL:-?}
-              SH_NEW=${SH_NEW:-?}
-              PLAYER_NEW=${PLAYER_NEW:-?}
-              if [[ "$NEW_TOTAL" =~ ^[0-9]+$ && "$SH_NEW" =~ ^[0-9]+$ && "$PLAYER_NEW" =~ ^[0-9]+$ ]]; then
-                RSS_NEW=$((NEW_TOTAL - SH_NEW - PLAYER_NEW))
-              else
-                RSS_NEW="?"
-              fi
-
-              CLS_SUCCESS=$(grep -oP '성공: \K[0-9]+(?=건)' classifier_output.log 2>/dev/null | head -1)
-              CLS_FAIL=$(grep -oP '실패: \K[0-9]+(?=건)' classifier_output.log 2>/dev/null | head -1)
-              CLS_SUCCESS=${CLS_SUCCESS:-0 또는 스킵}
-              CLS_FAIL=${CLS_FAIL:-0 또는 스킵}
-
-              GEO_LINE=$(grep -oP '완료: 성공 \K[0-9]+ / 실패 [0-9]+' geo_output.log 2>/dev/null | head -1)
-              GEO_LINE=${GEO_LINE:-확인 불가}
-
-              ARCHIVE_TOTAL=$(grep -oP '레코드 \K[0-9]+(?=건)' archive_index_output.log 2>/dev/null | head -1)
-              ARCHIVE_TOTAL=${ARCHIVE_TOTAL:-확인 불가}
-
-              LATEST_PUB=$(python -c "import archive_manager; rows = archive_manager.read_archive(); dates = [r.get('published_at','') for r in rows if r.get('published_at')]; print(max(dates)[:10] if dates else '?')" 2>/dev/null || echo "확인 불가")
-
-              echo "| 항목 | 값 |"
-              echo "|---|---|"
-              echo "| 신규 저장 | ${NEW_TOTAL}건 |"
-              echo "| ㄴ Student Housing | ${SH_NEW}건 |"
-              echo "| ㄴ Player | ${PLAYER_NEW}건 |"
-              echo "| ㄴ RSS | ${RSS_NEW}건 |"
-              echo "| 분류 성공/실패 | ${CLS_SUCCESS} / ${CLS_FAIL} |"
-              echo "| geo 성공/실패 | ${GEO_LINE} |"
-              echo "| archive_index 총건수 | ${ARCHIVE_TOTAL}건 |"
-              echo "| 원장 최신 published_at | ${LATEST_PUB} |"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
