@@ -153,6 +153,37 @@
     .col-sector    { width: 80px; color: #555; font-size: 11px; }
     .col-tags      { width: 110px; color: #666; font-size: 11px; word-break: break-word; }
     .col-rationale { color: #666; font-size: 11px; word-break: break-word; }
+    .col-region    { width: 70px; color: #555; font-size: 11px; }
+    .col-rel       { width: 50px; color: #555; font-size: 11px; text-align: center; }
+
+    /* ── Archive filters (chips) ── */
+    .archive-filter-group { margin-bottom: 14px; }
+    .archive-filter-label { font-size: 12px; font-weight: 600; color: #555; margin-bottom: 6px; }
+    .archive-filter-row { display: flex; align-items: center; gap: 8px; }
+    .archive-filter-row input[type="date"],
+    .archive-filter-row input[type="text"] {
+      padding: 6px 10px; font-size: 13px; border: 1px solid #ccc; border-radius: 6px;
+    }
+    .archive-filter-row input[type="text"] { flex: 1; }
+    .chip-box { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip-box-scroll { max-height: 120px; overflow-y: auto; padding: 6px; border: 1px solid #eee; border-radius: 8px; }
+    .chip {
+      padding: 5px 10px; font-size: 12px; border: 1px solid #ddd; border-radius: 14px;
+      background: #fff; color: #555; cursor: pointer; white-space: nowrap;
+    }
+    .chip:hover { border-color: #1a73e8; }
+    .chip.active { background: #1a73e8; border-color: #1a73e8; color: #fff; font-weight: 600; }
+    .archive-filter-actions { margin-bottom: 16px; }
+    .archive-clear-btn, .archive-more-btn {
+      padding: 6px 14px; font-size: 12px; border: 1px solid #ccc; border-radius: 6px;
+      background: #fff; color: #555; cursor: pointer;
+    }
+    .archive-clear-btn:hover, .archive-more-btn:hover { border-color: #1a73e8; color: #1a73e8; }
+    .archive-result-header { font-size: 16px; font-weight: 700; color: #1B3A5C; margin: 14px 0 6px; }
+    .archive-zero-hint { font-size: 12px; color: #999; margin-bottom: 10px; }
+    .archive-zero-hint ul { margin: 6px 0 0 18px; }
+    .archive-sort-row { font-size: 12px; color: #666; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .archive-sort-row select { padding: 4px 8px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; }
 
     .title-link {
       color: #1a73e8;
@@ -168,7 +199,7 @@
     .sh-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #555; margin-bottom: 10px; }
 
     /* ── Spinner ── */
-    #spinner {
+    #spinner, #archiveSpinner {
       display: flex; align-items: center; justify-content: center;
       padding: 60px; color: #999; font-size: 14px; gap: 10px;
     }
@@ -188,6 +219,7 @@
       .app-header-brief { font-size: 36px; }
       .col-sector, .col-tags { display: none; }
       .col-rationale { width: 140px; }
+      .chip-box-scroll { max-height: 96px; }
     }
 
     /* 데스크톱: 기사 테이블 좌우에 스크롤 잡을 여백 확보 */
@@ -337,6 +369,7 @@
     <div class="page-tabs">
       <button class="page-tab-btn active" data-page="page-news" onclick="switchPage(this)">📰 뉴스</button>
       <button class="page-tab-btn" data-page="page-intel" onclick="switchPage(this)">📊 인텔리전스</button>
+      <button class="page-tab-btn" data-page="page-archive" onclick="switchPage(this)">🗄️ 아카이브</button>
     </div>
 
     <div id="page-news" class="page-panel active">
@@ -436,6 +469,65 @@
 
     </div><!-- #app2 -->
     </div><!-- #page-intel -->
+
+    <div id="page-archive" class="page-panel">
+      <div id="archiveSpinner"><div class="spin"></div> 아카이브 로딩 중...</div>
+      <div id="archiveApp" style="display:none">
+        <div class="section">
+          <div class="section-title">🗄️ 아카이브 검색</div>
+
+          <div class="archive-filter-group">
+            <div class="archive-filter-label">섹터</div>
+            <div class="chip-box" id="chipSector"></div>
+          </div>
+          <div class="archive-filter-group">
+            <div class="archive-filter-label">주(State)</div>
+            <div class="chip-box chip-box-scroll" id="chipState"></div>
+          </div>
+          <div class="archive-filter-group">
+            <div class="archive-filter-label">이벤트 태그</div>
+            <div class="chip-box chip-box-scroll" id="chipEventTag"></div>
+          </div>
+          <div class="archive-filter-group">
+            <div class="archive-filter-label">관련성</div>
+            <div class="chip-box" id="chipRelevance"></div>
+          </div>
+          <div class="archive-filter-group">
+            <div class="archive-filter-label">카테고리</div>
+            <div class="chip-box" id="chipCategory"></div>
+          </div>
+          <div class="archive-filter-group archive-filter-row">
+            <div class="archive-filter-label">기간</div>
+            <input type="date" id="archiveFromDate" onchange="onArchiveFilterChange()" />
+            <span>~</span>
+            <input type="date" id="archiveToDate" onchange="onArchiveFilterChange()" />
+          </div>
+          <div class="archive-filter-group archive-filter-row">
+            <span style="font-size:16px;">🔍</span>
+            <input type="text" id="archiveSearchInput" placeholder="제목·소스 검색" oninput="onArchiveFilterChange()" />
+          </div>
+          <div class="archive-filter-actions">
+            <button type="button" class="archive-clear-btn" onclick="clearArchiveFilters()">필터 초기화</button>
+          </div>
+
+          <div id="archiveResultHeader" class="archive-result-header"></div>
+          <div id="archiveZeroHint" class="archive-zero-hint" style="display:none"></div>
+
+          <div class="archive-sort-row">
+            정렬:
+            <select id="archiveSortSelect" onchange="onArchiveFilterChange()">
+              <option value="date_desc">최신순</option>
+              <option value="relevance">관련성순</option>
+            </select>
+          </div>
+
+          <div class="scroll-box"><div class="scroll-inner h-600 tbl-wrap" id="archiveTable"></div></div>
+          <div id="archiveMoreWrap" style="text-align:center;margin-top:10px;display:none">
+            <button type="button" class="archive-more-btn" onclick="showMoreArchiveResults()">더 보기</button>
+          </div>
+        </div>
+      </div><!-- #archiveApp -->
+    </div><!-- #page-archive -->
   </main>
 </div>
 
@@ -750,6 +842,9 @@ function switchPage(btn) {
       console.error('Chart.js 로드 실패');
     }
     loadReportList();
+  } else if (btn.dataset.page === "page-archive") {
+    // loadArchiveData() 내부에서 archiveLoaded 플래그로 최초 1회만 fetch한다.
+    loadArchiveData();
   }
 }
 
@@ -772,6 +867,271 @@ function updateArchiveStats() {
     parts.push(`<span class="stat-item"><span class="stat-num">${archiveState.articleCount.toLocaleString()}</span>건 누적 분석</span>`);
   }
   el.innerHTML = parts.join('<span class="stat-sep">·</span>');
+}
+
+/* ══════════════════════════════════════════════════════════
+   Archive search (🗄️ 아카이브) — archive_index.json 소비.
+   articles.csv(allRows)와 완전히 별개인 데이터 흐름이다. 레코드
+   단축키(id/d/s/t/u/sec/cat/ev/rel/ks/cbsa/st/sc/gc)를 그대로 쓰고
+   변환 레이어를 두지 않는다.
+   Player 소스를 의도적으로 포함한다 — AA 213건이 전량 Player
+   소스라 제외하면 이 화면을 만든 이유가 없어진다. "전체 기사"
+   검색이 같은 이유로 Player를 포함하는 것과 일관된 판단이다.
+   핵심 모니터링·전략 신호 모니터의 PLAYER_SOURCE_PREFIX 제외
+   로직은 여기서 건드리지 않는다(별개 섹션, 별개 데이터).
+   ══════════════════════════════════════════════════════════ */
+const ARCHIVE_INDEX_URL = "https://raw.githubusercontent.com/jaehongbr-Coding/us-residential-v2/main/archive_index.json";
+let archiveData = null;     // fetch 1회, 이후 전역 보관 — 탭 재방문 시 재요청 안 함
+let archiveLoaded = false;  // 아카이브 탭 최초 클릭(또는 해시 진입) 시에만 true
+let archiveRenderLimit = 200; // 7,427건을 한 번에 그리지 않는다 — "더 보기"로 증가
+
+const archiveFilters = {
+  sec: new Set(), st: new Set(), ev: new Set(), rel: new Set(), cat: new Set(),
+  fromDate: "", toDate: "", text: "",
+};
+
+function loadArchiveData() {
+  if (archiveLoaded) return;
+  archiveLoaded = true;
+  fetch(ARCHIVE_INDEX_URL)
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then(data => {
+      archiveData = data;
+      document.getElementById("archiveSpinner").style.display = "none";
+      document.getElementById("archiveApp").style.display = "block";
+      restoreArchiveFiltersFromHash();
+      renderArchiveChips();
+      renderArchive();
+    })
+    .catch(err => {
+      document.getElementById("archiveSpinner").innerHTML =
+        `<span style="color:#c00">아카이브 로드 실패: ${err.message}</span>`;
+    });
+}
+
+function renderArchiveChips() {
+  const chipDefs = [
+    { id: "chipSector",   key: "sec", source: archiveData.filters.sectors },
+    { id: "chipState",    key: "st",  source: archiveData.filters.states },
+    { id: "chipEventTag", key: "ev",  source: archiveData.filters.event_tags },
+    { id: "chipCategory", key: "cat", source: archiveData.filters.categories },
+  ];
+  chipDefs.forEach(({ id, key, source }) => {
+    document.getElementById(id).innerHTML = source.map(f => {
+      const active = archiveFilters[key].has(f.value) ? " active" : "";
+      return `<button type="button" class="chip${active}" data-key="${key}" data-value="${escHtml(f.value)}" onclick="toggleArchiveFilter(this)">${escHtml(f.value)} (${f.count})</button>`;
+    }).join("");
+  });
+
+  // woomi_relevance는 archive_index.json의 filters 블록에 미집계 —
+  // 클라이언트에서 직접 카운트한다(geo_scope는 이번 화면에서 미노출).
+  const relCounts = {};
+  archiveData.records.forEach(r => { relCounts[r.rel] = (relCounts[r.rel] || 0) + 1; });
+  const relOrder = ["높음", "보통", "낮음"];
+  document.getElementById("chipRelevance").innerHTML = relOrder
+    .filter(v => relCounts[v])
+    .map(v => {
+      const active = archiveFilters.rel.has(v) ? " active" : "";
+      return `<button type="button" class="chip${active}" data-key="rel" data-value="${v}" onclick="toggleArchiveFilter(this)">${v} (${relCounts[v]})</button>`;
+    }).join("");
+}
+
+function toggleArchiveFilter(btn) {
+  const key = btn.dataset.key;
+  const value = btn.dataset.value;
+  const set = archiveFilters[key];
+  if (set.has(value)) set.delete(value); else set.add(value);
+  btn.classList.toggle("active");
+  archiveRenderLimit = 200;
+  renderArchive();
+}
+
+function onArchiveFilterChange() {
+  archiveFilters.fromDate = document.getElementById("archiveFromDate").value || "";
+  archiveFilters.toDate   = document.getElementById("archiveToDate").value || "";
+  archiveFilters.text     = (document.getElementById("archiveSearchInput").value || "").trim().toLowerCase();
+  archiveRenderLimit = 200;
+  renderArchive();
+}
+
+function clearArchiveFilters() {
+  archiveFilters.sec.clear(); archiveFilters.st.clear(); archiveFilters.ev.clear();
+  archiveFilters.rel.clear(); archiveFilters.cat.clear();
+  archiveFilters.fromDate = ""; archiveFilters.toDate = ""; archiveFilters.text = "";
+  document.getElementById("archiveFromDate").value = "";
+  document.getElementById("archiveToDate").value = "";
+  document.getElementById("archiveSearchInput").value = "";
+  archiveRenderLimit = 200;
+  renderArchiveChips();
+  renderArchive();
+}
+
+function showMoreArchiveResults() {
+  archiveRenderLimit += 200;
+  renderArchive();
+}
+
+/* skip: 특정 필터 카테고리 하나를 빼고 판정할 때 쓴다(0건 진단용). */
+function passesArchiveFilters(r, skip) {
+  if (skip !== "sec" && archiveFilters.sec.size && !archiveFilters.sec.has(r.sec)) return false;
+  if (skip !== "st" && archiveFilters.st.size) {
+    const states = (r.st || "").split("|").filter(Boolean);
+    if (!states.some(s => archiveFilters.st.has(s))) return false;
+  }
+  if (skip !== "ev" && archiveFilters.ev.size) {
+    const tags = (r.ev || "").split(",").map(s => s.trim()).filter(Boolean);
+    if (!tags.some(t => archiveFilters.ev.has(t))) return false;
+  }
+  if (skip !== "rel" && archiveFilters.rel.size && !archiveFilters.rel.has(r.rel)) return false;
+  if (skip !== "cat" && archiveFilters.cat.size && !archiveFilters.cat.has(r.cat)) return false;
+  if (skip !== "date" && (archiveFilters.fromDate || archiveFilters.toDate)) {
+    if (archiveFilters.fromDate && r.d < archiveFilters.fromDate) return false;
+    if (archiveFilters.toDate && r.d > archiveFilters.toDate) return false;
+  }
+  if (skip !== "text" && archiveFilters.text) {
+    const hay = `${r.t} ${r.s}`.toLowerCase();
+    if (!hay.includes(archiveFilters.text)) return false;
+  }
+  return true;
+}
+
+function hasAnyArchiveFilter() {
+  return !!(archiveFilters.sec.size || archiveFilters.st.size || archiveFilters.ev.size ||
+    archiveFilters.rel.size || archiveFilters.cat.size || archiveFilters.fromDate ||
+    archiveFilters.toDate || archiveFilters.text);
+}
+
+function diagnoseZeroArchiveResults() {
+  const cats = [
+    ["sec", "섹터"], ["st", "주"], ["ev", "이벤트 태그"],
+    ["rel", "관련성"], ["cat", "카테고리"], ["date", "기간"], ["text", "텍스트 검색"],
+  ];
+  const lines = [];
+  cats.forEach(([key, label]) => {
+    const isActive = key === "date" ? !!(archiveFilters.fromDate || archiveFilters.toDate)
+      : key === "text" ? !!archiveFilters.text
+      : archiveFilters[key].size > 0;
+    if (!isActive) return;
+    const countWithout = archiveData.records.filter(r => passesArchiveFilters(r, key)).length;
+    lines.push(`<li>"${label}" 필터를 빼면 ${countWithout.toLocaleString()}건</li>`);
+  });
+  return `<div>0건입니다. 필터를 하나씩 빼보면:</div><ul>${lines.join("")}</ul>`;
+}
+
+function buildArchiveTable(rows) {
+  if (!rows.length) return '<p class="empty-msg">조건에 맞는 기사가 없습니다</p>';
+  const trs = rows.map(r => {
+    const star = r.rel === "높음" ? '<span class="star">⭐ </span>' : "";
+    const region = (r.st || "").split("|").filter(Boolean).join(", ") || "—";
+    return `<tr>
+      <td class="col-date">${fmtDate(r.d)}</td>
+      <td class="col-title">
+        <a class="title-link" href="${escHtml(r.u)}" target="_blank" rel="noopener">
+          ${star}${escHtml(r.t)}
+        </a>
+      </td>
+      <td class="col-sector">${escHtml(r.sec)}</td>
+      <td class="col-region">${escHtml(region)}</td>
+      <td class="col-tags">${escHtml(r.ev)}</td>
+      <td class="col-rel">${escHtml(r.rel)}</td>
+    </tr>`;
+  }).join("");
+  return `<table>
+    <thead><tr>
+      <th class="col-date">날짜</th>
+      <th class="col-title">제목</th>
+      <th class="col-sector">섹터</th>
+      <th class="col-region">지역</th>
+      <th class="col-tags">태그</th>
+      <th class="col-rel">관련성</th>
+    </tr></thead>
+    <tbody>${trs}</tbody>
+  </table>`;
+}
+
+function renderArchive() {
+  if (!archiveData) return;
+  const filtered = archiveData.records.filter(r => passesArchiveFilters(r, null));
+
+  // 지역 미상 안내 — 주 필터가 걸려 있을 때만, 조용히 빠지는 건수를 표기한다.
+  let missingGeoNote = "";
+  if (archiveFilters.st.size) {
+    const withoutStateFilter = archiveData.records.filter(r => passesArchiveFilters(r, "st"));
+    const missingGeo = withoutStateFilter.filter(r => !r.st).length;
+    if (missingGeo > 0) {
+      missingGeoNote = ` (지역 미상 ${missingGeo.toLocaleString()}건은 주 필터에서 제외됨)`;
+    }
+  }
+
+  const activeLabels = [];
+  [...archiveFilters.sec, ...archiveFilters.st, ...archiveFilters.ev,
+   ...archiveFilters.rel, ...archiveFilters.cat].forEach(v => activeLabels.push(v));
+  if (archiveFilters.text) activeLabels.push(`"${archiveFilters.text}"`);
+  const label = activeLabels.length ? activeLabels.join(" + ") + " — " : "";
+  document.getElementById("archiveResultHeader").textContent =
+    `${label}${filtered.length.toLocaleString()}건${missingGeoNote}`;
+
+  const zeroHintEl = document.getElementById("archiveZeroHint");
+  if (filtered.length === 0 && hasAnyArchiveFilter()) {
+    zeroHintEl.innerHTML = diagnoseZeroArchiveResults();
+    zeroHintEl.style.display = "block";
+  } else {
+    zeroHintEl.style.display = "none";
+  }
+
+  const sortMode = document.getElementById("archiveSortSelect").value;
+  const relOrderMap = { "높음": 0, "보통": 1, "낮음": 2 };
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortMode === "relevance") {
+      const diff = (relOrderMap[a.rel] ?? 3) - (relOrderMap[b.rel] ?? 3);
+      if (diff !== 0) return diff;
+    }
+    return (b.d || "").localeCompare(a.d || "");
+  });
+
+  const toRender = sorted.slice(0, archiveRenderLimit);
+  document.getElementById("archiveTable").innerHTML = buildArchiveTable(toRender);
+  document.getElementById("archiveMoreWrap").style.display =
+    sorted.length > toRender.length ? "block" : "none";
+
+  updateArchiveHash();
+}
+
+/* ── URL 해시로 필터 상태 보존 (데모용 딥링크) ── */
+function updateArchiveHash() {
+  const params = [];
+  if (archiveFilters.sec.size) params.push("sec=" + [...archiveFilters.sec].map(encodeURIComponent).join(","));
+  if (archiveFilters.st.size)  params.push("st="  + [...archiveFilters.st].map(encodeURIComponent).join(","));
+  if (archiveFilters.ev.size)  params.push("ev="  + [...archiveFilters.ev].map(encodeURIComponent).join(","));
+  if (archiveFilters.rel.size) params.push("rel=" + [...archiveFilters.rel].map(encodeURIComponent).join(","));
+  if (archiveFilters.cat.size) params.push("cat=" + [...archiveFilters.cat].map(encodeURIComponent).join(","));
+  if (archiveFilters.fromDate) params.push("from=" + archiveFilters.fromDate);
+  if (archiveFilters.toDate)   params.push("to="   + archiveFilters.toDate);
+  if (archiveFilters.text)     params.push("q="    + encodeURIComponent(archiveFilters.text));
+  const hash = params.length ? "#archive?" + params.join("&") : "#archive";
+  if (location.hash !== hash) history.replaceState(null, "", hash);
+}
+
+function restoreArchiveFiltersFromHash() {
+  const hash = location.hash;
+  if (!hash.startsWith("#archive")) return;
+  const qIdx = hash.indexOf("?");
+  if (qIdx === -1) return;
+  const params = new URLSearchParams(hash.slice(qIdx + 1));
+  ["sec", "st", "ev", "rel", "cat"].forEach(key => {
+    const v = params.get(key);
+    if (v) v.split(",").forEach(item => archiveFilters[key].add(decodeURIComponent(item)));
+  });
+  if (params.get("from")) archiveFilters.fromDate = params.get("from");
+  if (params.get("to"))   archiveFilters.toDate   = params.get("to");
+  if (params.get("q"))    archiveFilters.text     = decodeURIComponent(params.get("q"));
+
+  document.getElementById("archiveFromDate").value   = archiveFilters.fromDate;
+  document.getElementById("archiveToDate").value     = archiveFilters.toDate;
+  document.getElementById("archiveSearchInput").value = archiveFilters.text;
 }
 
 /* ── Load CSV ── */
@@ -938,6 +1298,13 @@ if ('serviceWorker' in navigator) {
     swRefreshed = true;
     window.location.reload();
   });
+}
+
+// #archive?... 해시로 직접 진입(데모용 딥링크) — 아카이브 탭 클릭과
+// 동일한 switchPage() 경로를 그대로 태워 lazy-load 로직을 재사용한다.
+if (location.hash.startsWith('#archive')) {
+  const archiveBtn = document.querySelector('.page-tab-btn[data-page="page-archive"]');
+  if (archiveBtn) switchPage(archiveBtn);
 }
 </script>
 </body>
