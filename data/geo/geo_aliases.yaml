@@ -354,6 +354,19 @@ submarkets:
   "The Bronx": "35620"
   "Staten Island": "35620"
 
+  # 2026.09 geo resolver 진단: 크로스워크의 실제 키는 CBSA 타이틀 첫 세그먼트인
+  # "New York"뿐이다. "New York City"가 매칭 안 되는 건 항목 부재가 아니라
+  # 문자열 불일치다 — geo_norm.norm()이 " city"/" town" 접미사를 일괄 제거하지
+  # 않는 이유는 그러면 "Oklahoma City, OK"/"Kansas City, MO-KS"/
+  # "Carson City, NV" 같은 고유 지명이 bare 주 이름·다른 도시와 충돌해
+  # 오판정을 낳기 때문이다(위 norm() 주석, tests의 test_carson_without_state_*
+  # 참조) — 그 규칙은 되돌리지 않고 이 두 항목만 개별 alias로 추가한다.
+  # "New York City"/"NYC"는 가리키는 대상이 유일해 UW/USC류 통칭 충돌
+  # 위험이 없다(원장 실측: "New York City"/"NYC"가 primary로 나왔는데 실패한
+  # 건이 110건 — Stage A는 정확히 추출했고 표기만 안 맞았다).
+  "New York City": "35620"
+  "NYC": "35620"
+
 colloquial:
   "Metro Atlanta": "12060"
   "CoMo": "17860"          # Columbia, MO 지역 통칭

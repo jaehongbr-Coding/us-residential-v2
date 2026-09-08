@@ -1,7 +1,7 @@
 {
  "vintage": "2023",
  "source": "OMB Bulletin 23-01 / US Census Bureau delineation files (list1/list2)",
- "built_at": "2026-09-07T01:53:33.518807+00:00",
+ "built_at": "2026-09-08T01:38:25.159633+00:00",
  "cbsa": {
   "10100": {
    "code": "10100",
@@ -27268,6 +27268,8 @@
   "bronx": "35620",
   "the bronx": "35620",
   "staten island": "35620",
+  "new york city": "35620",
+  "nyc": "35620",
   "metro atlanta": "12060",
   "como": "17860"
  },
