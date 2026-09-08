@@ -173,6 +173,8 @@
     }
     .chip:hover { border-color: #1a73e8; }
     .chip.active { background: #1a73e8; border-color: #1a73e8; color: #fff; font-weight: 600; }
+    .chip.chip-zero { color: #bbb; border-color: #eee; }
+    .chip.chip-zero.active { background: #90b8e8; border-color: #90b8e8; color: #fff; }
     .archive-filter-actions { margin-bottom: 16px; }
     .archive-clear-btn, .archive-more-btn {
       padding: 6px 14px; font-size: 12px; border: 1px solid #ccc; border-radius: 6px;
@@ -516,8 +518,8 @@
           <div class="archive-sort-row">
             정렬:
             <select id="archiveSortSelect" onchange="onArchiveFilterChange()">
+              <option value="relevance" selected>관련성순</option>
               <option value="date_desc">최신순</option>
-              <option value="relevance">관련성순</option>
             </select>
           </div>
 
@@ -903,8 +905,7 @@ function loadArchiveData() {
       document.getElementById("archiveSpinner").style.display = "none";
       document.getElementById("archiveApp").style.display = "block";
       restoreArchiveFiltersFromHash();
-      renderArchiveChips();
-      renderArchive();
+      refreshArchive();
     })
     .catch(err => {
       document.getElementById("archiveSpinner").innerHTML =
@@ -912,31 +913,59 @@ function loadArchiveData() {
     });
 }
 
-function renderArchiveChips() {
-  const chipDefs = [
-    { id: "chipSector",   key: "sec", source: archiveData.filters.sectors },
-    { id: "chipState",    key: "st",  source: archiveData.filters.states },
-    { id: "chipEventTag", key: "ev",  source: archiveData.filters.event_tags },
-    { id: "chipCategory", key: "cat", source: archiveData.filters.categories },
-  ];
-  chipDefs.forEach(({ id, key, source }) => {
-    document.getElementById(id).innerHTML = source.map(f => {
-      const active = archiveFilters[key].has(f.value) ? " active" : "";
-      return `<button type="button" class="chip${active}" data-key="${key}" data-value="${escHtml(f.value)}" onclick="toggleArchiveFilter(this)">${escHtml(f.value)} (${f.count})</button>`;
-    }).join("");
-  });
+/* ── 패싯 카운트 ── 2026.09: 정적 사전집계(archive_index.json의 filters)로
+   칩 숫자를 고정 표시하면 "MF(2545)+CA(738) 선택했는데 결과 324건"처럼
+   전체 기준 숫자와 실제 결과가 어긋나 사용자가 조합을 예측할 수 없다.
+   그룹별 칩 카운트는 "다른 그룹의 활성 필터를 전부 적용하고 자기 그룹만
+   뺀"(passesArchiveFilters의 skip 인자) 기준으로 매번 다시 센다.
+   7,427건이라 성능 문제는 없다 — 초기 상태(필터 없음)에서도 이 방식이
+   archive_index.json의 사전집계와 동일한 값을 내므로 별도 분기를 두지
+   않았다. */
+function countByValue(base, getter, value) {
+  let n = 0;
+  for (const r of base) if (getter(r).includes(value)) n++;
+  return n;
+}
+const ARCHIVE_FACET_GETTERS = {
+  sec: r => [r.sec],
+  st:  r => (r.st || "").split("|").filter(Boolean),
+  ev:  r => (r.ev || "").split(",").map(s => s.trim()).filter(Boolean),
+  cat: r => [r.cat],
+  rel: r => [r.rel],
+};
 
-  // woomi_relevance는 archive_index.json의 filters 블록에 미집계 —
-  // 클라이언트에서 직접 카운트한다(geo_scope는 이번 화면에서 미노출).
-  const relCounts = {};
-  archiveData.records.forEach(r => { relCounts[r.rel] = (relCounts[r.rel] || 0) + 1; });
-  const relOrder = ["높음", "보통", "낮음"];
-  document.getElementById("chipRelevance").innerHTML = relOrder
-    .filter(v => relCounts[v])
-    .map(v => {
-      const active = archiveFilters.rel.has(v) ? " active" : "";
-      return `<button type="button" class="chip${active}" data-key="rel" data-value="${v}" onclick="toggleArchiveFilter(this)">${v} (${relCounts[v]})</button>`;
-    }).join("");
+function renderChipGroup(elId, key, values, base, labelFn) {
+  const getter = ARCHIVE_FACET_GETTERS[key];
+  document.getElementById(elId).innerHTML = values.map(v => {
+    // "지역 미상"(st=="")은 st가 빈 레코드 수를 센다 — 일반 getter(빈 배열)로는
+    // 잡히지 않으므로 별도 분기.
+    const count = (key === "st" && v === "")
+      ? base.filter(r => !r.st).length
+      : countByValue(base, getter, v);
+    const active = archiveFilters[key].has(v) ? " active" : "";
+    const zero = count === 0 ? " chip-zero" : "";
+    const label = labelFn ? labelFn(v) : v;
+    return `<button type="button" class="chip${active}${zero}" data-key="${key}" data-value="${escHtml(v)}" onclick="toggleArchiveFilter(this)">${escHtml(label)} (${count})</button>`;
+  }).join("");
+}
+
+function renderArchiveChips() {
+  renderChipGroup("chipSector", "sec", archiveData.filters.sectors.map(f => f.value),
+    archiveData.records.filter(r => passesArchiveFilters(r, "sec")));
+  renderChipGroup("chipState", "st", ["", ...archiveData.filters.states.map(f => f.value)],
+    archiveData.records.filter(r => passesArchiveFilters(r, "st")),
+    v => v === "" ? "지역 미상" : v);
+  renderChipGroup("chipEventTag", "ev", archiveData.filters.event_tags.map(f => f.value),
+    archiveData.records.filter(r => passesArchiveFilters(r, "ev")));
+  renderChipGroup("chipCategory", "cat", archiveData.filters.categories.map(f => f.value),
+    archiveData.records.filter(r => passesArchiveFilters(r, "cat")));
+  renderChipGroup("chipRelevance", "rel", ["높음", "보통", "낮음"],
+    archiveData.records.filter(r => passesArchiveFilters(r, "rel")));
+}
+
+function refreshArchive() {
+  renderArchiveChips();
+  renderArchive();
 }
 
 function toggleArchiveFilter(btn) {
@@ -944,9 +973,8 @@ function toggleArchiveFilter(btn) {
   const value = btn.dataset.value;
   const set = archiveFilters[key];
   if (set.has(value)) set.delete(value); else set.add(value);
-  btn.classList.toggle("active");
   archiveRenderLimit = 200;
-  renderArchive();
+  refreshArchive();
 }
 
 function onArchiveFilterChange() {
@@ -954,7 +982,7 @@ function onArchiveFilterChange() {
   archiveFilters.toDate   = document.getElementById("archiveToDate").value || "";
   archiveFilters.text     = (document.getElementById("archiveSearchInput").value || "").trim().toLowerCase();
   archiveRenderLimit = 200;
-  renderArchive();
+  refreshArchive();
 }
 
 function clearArchiveFilters() {
@@ -965,8 +993,7 @@ function clearArchiveFilters() {
   document.getElementById("archiveToDate").value = "";
   document.getElementById("archiveSearchInput").value = "";
   archiveRenderLimit = 200;
-  renderArchiveChips();
-  renderArchive();
+  refreshArchive();
 }
 
 function showMoreArchiveResults() {
@@ -974,12 +1001,16 @@ function showMoreArchiveResults() {
   renderArchive();
 }
 
-/* skip: 특정 필터 카테고리 하나를 빼고 판정할 때 쓴다(0건 진단용). */
+/* skip: 특정 필터 카테고리 하나를 빼고 판정한다 — 0건 진단과 패싯 카운트
+   (renderArchiveChips)가 함께 쓴다: "다른 그룹은 전부 적용, 자기 그룹만 제외". */
 function passesArchiveFilters(r, skip) {
   if (skip !== "sec" && archiveFilters.sec.size && !archiveFilters.sec.has(r.sec)) return false;
   if (skip !== "st" && archiveFilters.st.size) {
     const states = (r.st || "").split("|").filter(Boolean);
-    if (!states.some(s => archiveFilters.st.has(s))) return false;
+    // ""(지역 미상)은 st가 아예 빈 레코드를 가리키는 별도 값이다.
+    const matches = states.some(s => archiveFilters.st.has(s)) ||
+      (states.length === 0 && archiveFilters.st.has(""));
+    if (!matches) return false;
   }
   if (skip !== "ev" && archiveFilters.ev.size) {
     const tags = (r.ev || "").split(",").map(s => s.trim()).filter(Boolean);
@@ -1056,23 +1087,19 @@ function renderArchive() {
   if (!archiveData) return;
   const filtered = archiveData.records.filter(r => passesArchiveFilters(r, null));
 
-  // 지역 미상 안내 — 주 필터가 걸려 있을 때만, 조용히 빠지는 건수를 표기한다.
-  let missingGeoNote = "";
-  if (archiveFilters.st.size) {
-    const withoutStateFilter = archiveData.records.filter(r => passesArchiveFilters(r, "st"));
-    const missingGeo = withoutStateFilter.filter(r => !r.st).length;
-    if (missingGeo > 0) {
-      missingGeoNote = ` (지역 미상 ${missingGeo.toLocaleString()}건은 주 필터에서 제외됨)`;
-    }
-  }
-
+  // 2026.09: "지역 미상"은 결과 헤더의 괄호 안내 대신 주(State) 칩으로
+  // 옮겼다(renderArchiveChips) — 선택 가능하고 카운트도 동적으로 갱신되므로
+  // 별도 안내 문구가 필요 없다.
   const activeLabels = [];
-  [...archiveFilters.sec, ...archiveFilters.st, ...archiveFilters.ev,
-   ...archiveFilters.rel, ...archiveFilters.cat].forEach(v => activeLabels.push(v));
+  archiveFilters.sec.forEach(v => activeLabels.push(v));
+  archiveFilters.st.forEach(v => activeLabels.push(v === "" ? "지역 미상" : v));
+  archiveFilters.ev.forEach(v => activeLabels.push(v));
+  archiveFilters.rel.forEach(v => activeLabels.push(v));
+  archiveFilters.cat.forEach(v => activeLabels.push(v));
   if (archiveFilters.text) activeLabels.push(`"${archiveFilters.text}"`);
   const label = activeLabels.length ? activeLabels.join(" + ") + " — " : "";
   document.getElementById("archiveResultHeader").textContent =
-    `${label}${filtered.length.toLocaleString()}건${missingGeoNote}`;
+    `${label}${filtered.length.toLocaleString()}건`;
 
   const zeroHintEl = document.getElementById("archiveZeroHint");
   if (filtered.length === 0 && hasAnyArchiveFilter()) {
@@ -1123,7 +1150,9 @@ function restoreArchiveFiltersFromHash() {
   const params = new URLSearchParams(hash.slice(qIdx + 1));
   ["sec", "st", "ev", "rel", "cat"].forEach(key => {
     const v = params.get(key);
-    if (v) v.split(",").forEach(item => archiveFilters[key].add(decodeURIComponent(item)));
+    // "지역 미상"(st="")만 선택된 경우 v는 빈 문자열이라 falsy — null(파라미터
+    // 자체가 없음)과 구분해야 한다.
+    if (v !== null) v.split(",").forEach(item => archiveFilters[key].add(decodeURIComponent(item)));
   });
   if (params.get("from")) archiveFilters.fromDate = params.get("from");
   if (params.get("to"))   archiveFilters.toDate   = params.get("to");
