@@ -603,3 +603,131 @@ few-shot-in-system 구조 변경도 유지했다. [USAGE] 로깅은 그대로 �
 
 ### 커밋
 - (본 커밋) classifier·geo_tagger cache_control 제거
+
+---
+
+## 2026-09-09(3) : AA 관련성 3차 수정 — 판단의 비결정성을 잡아냈다
+
+### 세 라운드 추이
+| | 1차 (n=214) | 2차 (n=213) | 3차 (n=215) |
+|---|---|---|---|
+| 높음/보통/낮음 | 162/43/9 (75.7%) | 105/89/19 (49.3%) | 84/118/13 (39.1%) |
+| 개발-높음 | 100 | 53 | 37 |
+
+1차는 AA "높음" 줄에 조건이 아예 없었다(무조건 승급). 2차는 착공/기관자본/
+Sun Belt·LA-West Coast 위치 중 하나를 요구했으나 위치가 단독 트리거로
+작동해 23건이 위치만으로 승급했다. 3차는 위치를 "둘 중 하나가 이미 충족된
+경우의 가중 요소"로 낮추고, 착공·완공 또는 기관자본 참여만 남겼다.
+
+### 결함 1의 변형 재발 — "위치 단독"이 "플랫폼 딜"로 옷을 갈아입었다
+개발-높음 37건 중 33건(89%)은 착공/완공/기관자본을 rationale에서 언급했으나,
+4건은 둘 다 언급하지 않았다. 원문 헤드라인과 대조한 결과:
+
+```
+13ca58b7f9a4 | "3,500-Home Margaritaville Active Adult Community Coming To Texas
+              City" (Bisnow, 헤드라인 자체가 미확정 계획 발표)
+  → rationale: "...Sun Belt 지역 대규모 액티브 어덜트 플랫폼 딜에 해당한다."
+
+db2387e4da9b | "Taylor Morrison plotting first active-adult community in Atlanta
+              market" ("plotting"=구상 중 단계)
+  → rationale: "...선벨트 지역 액티브 어덜트 섹터 확장 신호로... 주목할 만한
+              개발 동향이다."
+
+cda1948ea6a7 | "Luxury apartment complex in Phoenix's CityNorth now accepting
+              pre-lease applications" (헤드라인에 Active Adult 언급조차 없음)
+  → rationale: "...BTR/Active Adult 섹터 주요 운영사의 Sun Belt 시장 진입
+              이벤트에 해당함."
+
+802f73c8158b | "King of Prussia office building to be razed for 205-unit
+              apartment project" (헤드라인에 Active Adult 언급 없음)
+  → rationale: "...Greystar라는 주요 플랫폼이 참여한 점에서 높은 관련성을
+              가진다."
+```
+
+"플랫폼 딜"·"주요 운영사 진입"·"주요 플랫폼 참여"는 프롬프트가 정한 두 조건
+(착공/완공 확인, 기관자본 확인) 어디에도 없다. 조건을 좁히면 모델이 그 자리를
+프롬프트에 없는 제3의 근거로 메운다는 패턴이 2차에 이어 3차에도 반복됐다.
+
+### 날조 사례
+```
+c9b4754d5112 | "Canadian builder to bring 650-home 'active adult' community to
+              Sarasota County" (헤드라인은 미래형 "to bring")
+  → rationale: "...대규모 프로젝트 착공이 확인되는 기사로 높음에 해당."
+```
+원문에 없는 사실("착공이 확인되는")을 rationale이 만들어냈다.
+
+### explicitly의 역방향 부작용 — 같은 사건, 정반대 판정
+```
+1bf4c84cba1a (citybiz, 1/21) | "CF Evans Construction Selected to Build Album
+              Dorchester, an Active-Adult Community in North Charleston..."
+  → 높음: "시공사를 선정하며 착공을 공식화한 개발 기사로... 착공 확인 조건을
+         충족하여 높음으로 분류."
+
+9d013562156f (Construction Owners, 1/25, 동일 프로젝트 재보도) | "CF Evans
+              Construction Selected for Album Dorchester Active-Adult
+              Community in North Charleston..."
+  → 보통: "시공사 선정 단계이나, 착공 확인이나 기관 자본 참여가... 명시되지
+         않아 '보통'으로 분류."
+```
+같은 프로젝트, 같은 사실(시공사 선정)을 다룬 두 기사가 같은 배치 안에서
+정반대로 판정됐다. 이것이 이번 라운드의 핵심 발견이다 — **프롬프트 문구의
+한계가 아니라 판단 자체의 비결정성**이다. "explicitly confirmed"라는 문구를
+아무리 다듬어도, 모델이 같은 사실에 대해 매번 같은 결론을 내린다는 보장은
+프롬프트만으로 만들 수 없다.
+
+같은 패턴이 Elk Township 기사에서도 나타났다:
+```
+161a7099c549 | "See construction underway on Elk Township active adult
+              housing" (헤드라인에 "construction underway" 명시, 모델 자신이
+              매긴 event_tags도 construction_start)
+  → rationale: "...기관 자본 참여나 착공 확인 외 구체적 정보가 부족하여
+              '보통'으로 분류."
+```
+이 기사는 2차에서도 같은 이유로 강등됐다 — 3차도 고치지 못했다. 같은 패턴이
+`d7674d0834b2`("Apartments Under Construction At Growing Shopping Hub", 헤드라인에
+"Under Construction" 명시)에서도 나타났다.
+
+### 미해결 후보 처방 — 기록만, 구현하지 않음
+event_tags에 construction_start를 붙여놓고 rationale에서는 "착공 불명확"이라고
+쓰는 것은 같은 API 응답 안에서의 자기모순이다. woomi_relevance의 착공 조건을
+산문 판단이 아니라 모델 자신의 event_tags 출력 값에 프로그램적으로 묶는 것이
+후보 처방이 될 수 있으나, 이는 프롬프트 패치가 아니라 파이프라인 설계
+변경이라 이번에 구현하지 않았다. 로드맵의 2단 스크리닝(Haiku 1차 선별 →
+Sonnet 정밀 분류) 논의와 함께 다룰 항목이다.
+
+### 결함 3(Known GP 오귀속)은 해결
+2차 5건 → 3차 0건(애매 1건). PRIORITY 4번에 추가한 폐쇄성 문장이 의도대로
+작동한 사례:
+```
+10b25b07506c | "Active Adult 단일 자산 거래로 기관 자본 참여 여부가 불명확하여
+              '보통'으로 분류되며, Inland은 Known GP 목록에 포함되지 않음."
+8be2c732766d | "...Known GP 개입 없이 단일 운영사의 서비스 확장에 해당하여
+              '보통'으로 분류."
+```
+
+### 미해결 규모
+215건 중 확정 규칙 위반 4건 + 날조성 1건 + 과도 강등 2~3건(중복 집계 없이
+약 7건, 3%). 세 라운드 평균 높음 비율 75.7 → 49.3 → 39.1%(labels.db
+전체 평균은 15.2%). regression_snapshot 300건 mismatch 0, articles.csv/
+labels.db AA 건수 211=211 일치.
+
+### 캐싱 제거 검증 (재확인)
+```
+[USAGE] input_tokens 573413 / output_tokens 108232 /
+        cache_creation_input_tokens 0 / cache_read_input_tokens 0
+```
+215건 배치, cache_creation·cache_read 모두 0 — 어제 제거한 cache_control이
+실제로 반영됐음을 재확인. 건당 입력 약 2,667토큰(SYSTEM_PROMPT가 AA 조건
+추가로 늘어난 만큼 반영된 수치).
+
+### 4차 재분류는 하지 않는다
+CF Evans/Album Dorchester 사례는 프롬프트 문구를 더 다듬어서 없앨 수 있는
+종류의 문제가 아니라고 판단했다 — 문구를 좁히면 2차→3차처럼 또 다른 변종이
+나타날 뿐이다. 이번 라운드는 결함3을 해결하고 결함1·2의 규모를 축소했으나,
+남은 약 3%는 프롬프트 튜닝이 아니라 다른 접근(event_tags 연계, 또는 다중
+샘플링 후 합의 판정 같은 구조적 방법)이 필요하다는 것이 이번 라운드의
+결론이다.
+
+### 커밋
+- f224248 classifier.py AA 위치 단독 승급 제거·OR 명시·Known GP 폐쇄성 명시
+- 6f62f4a labels.db/articles.csv/archive_index.json AA 3차 재분류 반영
