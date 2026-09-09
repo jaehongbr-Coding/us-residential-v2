@@ -238,10 +238,13 @@ def run_batch(client: anthropic.Anthropic, targets: list[dict]) -> dict:
             "params": {
                 "model": MODEL,
                 "max_tokens": MAX_TOKENS,
+                # cache_control 제거(2026-09-09): Haiku 4.5 최소 캐시 길이는
+                # 4,096토큰인데 GEO_SYSTEM_FULL은 약 720토큰(2,878자)뿐이라
+                # 미달 — 오류 없이 그냥 캐싱 없이 처리된다(실측 cache_write 0 /
+                # cache_read 0). few-shot을 system 블록으로 옮긴 구조는 유지한다.
                 "system": [{
                     "type": "text",
                     "text": GEO_SYSTEM_FULL,
-                    "cache_control": {"type": "ephemeral", "ttl": "1h"},
                 }],
                 "messages": [{"role": "user", "content": build_geo_prompt(article)}],
             },

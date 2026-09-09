@@ -184,10 +184,14 @@ def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> t
             "params": {
                 "model": MODEL,
                 "max_tokens": 1500,
+                # cache_control 제거(2026-09-09): 배치는 동시 처리라 대부분의
+                # 요청이 캐시 생성 전에 이미 출발한다. 실측(108건) 히트율 12%
+                # (cache_read 30,312 / cache_write 242,496)에서 1h 캐시쓰기가
+                # 기본 입력의 2배 요금이라 캐싱 있음 $1.05 vs 없음 $0.73로
+                # 캐싱 쪽이 44% 더 비쌌다 — 순손실이라 제거.
                 "system": [{
                     "type": "text",
                     "text": SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral", "ttl": "1h"},
                 }],
                 "messages": [{"role": "user", "content": build_prompt(article)}],
             },

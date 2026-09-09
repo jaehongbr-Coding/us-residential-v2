@@ -554,3 +554,52 @@ classifier.py의 MODEL·ttl·SYSTEM_PROMPT, index.html/app.py/weekly_report.py�
 ### 커밋
 - 3d3d986 classifier·geo_tagger 토큰 사용량 로깅 추가
 - (본 커밋) geo_tagger 프롬프트 캐싱 적용, few-shot을 system 블록으로 이동
+
+---
+
+## 2026-09-09(2) : 프롬프트 캐싱 제거 — 문서 권장이 실측으로 뒤집힌 사례
+
+### 실측: 캐싱이 이득이 아니라 손실이었다
+전날 추가한 [USAGE] 로깅이 다음 정상 실행(108건 배치, `logs/last_run.md`
+2026-09-09 01:09 UTC)에서 바로 답을 줬다. classifier.py 토큰:
+input 10,900 / output 40,855 / cache_write 242,496 / cache_read 30,312.
+cache_write ≈101회분, cache_read ≈12회분 — 히트율 12%.
+
+계산: 1시간 캐시 쓰기는 기본 입력의 2배 요금이다(cache read는 약 0.1배).
+93%(101/113)가 2배 요금을 내고 12%만 0.1배 할인을 받는 구조라, 캐싱 있음
+$1.05 vs 캐싱 없음 $0.73 — **캐싱이 44% 더 비쌌다**. 5분 TTL(1.25배)로
+낮춰도 $0.78로 여전히 캐싱 없는 쪽이 쌌다.
+
+### 원인
+배치 요청은 정의상 동시 처리된다. 캐시 항목은 첫 응답이 시작된 뒤에야
+읽기 가능해지는데, 동시에 출발하는 요청들은 그 시점에 이미 출발한
+상태라 캐시를 못 받는다. Anthropic 문서가 배치 처리에 1시간 TTL을
+권장하는 것은 사실이지만, 그 권장은 "히트가 실제로 난다"는 것을
+전제로 한 상대 비교(1시간 vs 5분 중 어느 쪽이 나은가)이지, "배치에서
+캐싱이 이득"이라는 뜻이 아니었다. 어제 이 권장 문구만 보고 "1h 유지"로
+판단한 것이 틀렸다.
+
+### geo는 애초에 구조적으로 불가능했다
+geo_tagger.py의 system 블록(GEO_SYSTEM_FULL)은 2,878자(약 720토큰)다.
+Claude API 레퍼런스 확인 결과 Haiku 4.5의 최소 캐시 가능 길이는
+**4,096토큰**이다 — 미달 시 오류 없이 그냥 캐싱 없이 처리된다. 실측도
+cache_write 0 / cache_read 0으로 일치했다. 전날 few-shot을 system으로
+옮기고 cache_control을 붙인 작업은 캐싱 관점에서는 하루 종일 효과가
+0이었다 — 다만 few-shot을 system 블록으로 옮긴 구조 변경 자체는
+품질 저하 없이(108/108 성공) 그대로 유지했다.
+
+### 문서 권장 → 실측 뒤집힘
+"문서가 권장하니 맞다"는 판단이 실측 데이터로 뒤집힌 사례다. 전날
+[USAGE] 로깅을 먼저 넣지 않았으면 캐싱이 이득이라 믿고 계속 44% 더 비싼
+방식으로 돌렸을 것이다 — 비용 측정 수단을 먼저 갖추는 것이 판단보다
+선행해야 하는 이유가 이번에 실증됐다.
+
+### 조치
+classifier.py·geo_tagger.py 두 곳 모두 system 블록에서 `cache_control`을
+제거했다. system 필드는 리스트 형태를 유지했고(구조 변경 없음),
+MODEL·SYSTEM_PROMPT·max_tokens·BATCH_SIZE는 손대지 않았다. geo_tagger의
+few-shot-in-system 구조 변경도 유지했다. [USAGE] 로깅은 그대로 남겨
+다음 실행에서 cache_write/read가 0이 되고 input이 늘어나는지 확인한다.
+
+### 커밋
+- (본 커밋) classifier·geo_tagger cache_control 제거
