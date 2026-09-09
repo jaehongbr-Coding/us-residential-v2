@@ -126,6 +126,12 @@ GEO_FEWSHOT = [
 
 _SHOTS_TEXT = "\n\n".join(f"TEXT:\n{i}\n\nJSON:\n{o}" for i, o in GEO_FEWSHOT)
 
+# few-shot은 기사별로 달라지지 않는 고정 텍스트다 — GEO_SYSTEM_PROMPT 뒤에 붙여
+# system 블록 전체를 캐시 대상으로 만든다. 이 결합 문자열의 끝이 곧 캐시
+# 브레이크포인트(변하지 않는 접두부의 끝)이며, 그 뒤(user 메시지)부터는
+# 기사마다 달라지는 내용만 온다.
+GEO_SYSTEM_FULL = f"{GEO_SYSTEM_PROMPT}\n\n{_SHOTS_TEXT}"
+
 
 def _strip_fence(t: str) -> str:
     """CLAUDE.md 기록된 기존 버그 대응 — 코드펜스 제거 (classifier.py와 동일 관례)."""
@@ -137,8 +143,9 @@ def _strip_fence(t: str) -> str:
 
 
 def build_geo_prompt(article: dict) -> str:
+    """few-shot은 GEO_SYSTEM_FULL(system 블록)로 옮겨졌으므로 기사 본문만 담는다."""
     text = f"{article.get('title', '')}\n\n{article.get('summary', '')}".strip()[:4000]
-    return f"{_SHOTS_TEXT}\n\nTEXT:\n{text}\n\nJSON:"
+    return f"TEXT:\n{text}\n\nJSON:"
 
 
 # ------------------------------------------------------------------
@@ -231,7 +238,11 @@ def run_batch(client: anthropic.Anthropic, targets: list[dict]) -> dict:
             "params": {
                 "model": MODEL,
                 "max_tokens": MAX_TOKENS,
-                "system": GEO_SYSTEM_PROMPT,
+                "system": [{
+                    "type": "text",
+                    "text": GEO_SYSTEM_FULL,
+                    "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                }],
                 "messages": [{"role": "user", "content": build_geo_prompt(article)}],
             },
         }

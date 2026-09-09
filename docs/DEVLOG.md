@@ -494,3 +494,63 @@ before/after 비교 기준으로 쓴다.
 
 ---
 (이후 작업은 이 아래에 날짜순으로 추가)
+
+## 2026-09-09 : 크레딧 소진 원인 진단 — 모델 교체 가설 기각, geo_tagger 캐싱 적용
+
+### 발단
+9/9 오전 daily_collect가 API 크레딧 소진으로 실패했다. Console 사용량 CSV 분석
+결과 9/3~9/8 6일간 $16.4로 전체의 89%가 개발 과정 소진이었고, 9/7 하루가
+$7.19(geo Stage A 백필 $4.10 일회성 포함)였다. 그런데 이걸 측정할 수단이
+코드에 없었다 — classifier.py/geo_tagger.py는 캐시 hit/miss만 로그하고
+토큰·비용을 기록하지 않아, 위 분석 자체가 Console CSV 역산이었다. 토큰
+로깅(input/output/cache_creation_input/cache_read_input, 커밋 3d3d986)을
+먼저 추가했다.
+
+### "8/31 모델 교체" 가설 — 기각
+classifier.py의 MODEL 상수는 커밋 `a749108`(2026-06-12) 이후 `claude-sonnet-4-6`
+고정이며 변경 이력이 없다. `claude-sonnet-4-5` 문자열이 classifier.py에 존재한
+적 자체가 없다(`git log -S` 확인). 8월 초 Sonnet 4.5는 weekly_report.py였다 —
+커밋 `2a46574`(2026-08-25)에서 weekly_report.py만 4.5→4.6으로 바뀌었고,
+weekly_report.py는 주 1회 실행이라 일일 비용 급증의 원인이 될 수 없다.
+8/25~9/2 구간 classifier.py·geo_tagger.py 커밋은 전무했다.
+
+### 재분류 3회가 비용의 상당 부분
+AA sector 도입 후 245건(9/7, 커밋 `8e2b1c6`) → 211건(9/8, 커밋 `9b9beb6`) 재분류가
+있었고, 3차가 예정돼 있다(213건). 세 번 모두 전체 재분류가 필요했던 이유는
+prompt(woomi_relevance 조건)를 한 번에 못 고쳤기 때문이다 — DEVLOG
+2026-09-08(4) "미해결 결함 3건" 참조.
+
+### "규칙 기반 1차 필터"가 원리적으로 불가능
+sector·event_tags·category는 classifier.py 호출의 **결과물**이라 호출 전에는
+존재하지 않는다. 호출 전에 알 수 있는 신호는 source뿐이다.
+
+### 소스 기반 필터는 채택하지 않음
+labels.db(7,427건) 기준 Bisnow 79.5%/Connect CRE 82.1%/Commercial Observer
+76.5%가 woomi_relevance=낮음이었다. 세 소스 합계 2,396건(전체 분류량의
+32.3%)을 필터링하면 낮음이 아닌 나머지 18~24%, 약 480건도 함께 버리게 된다.
+"수집은 넓게, 판단은 렌즈에서" 원칙(CLAUDE.md)에 어긋나 채택하지 않았다.
+
+### geo_tagger.py 캐싱 적용
+classifier.py는 이미 SYSTEM_PROMPT에 `cache_control: {ephemeral, ttl: 1h}`가
+적용돼 있었다(2026-08-24, 커밋 `5b228bd`). geo_tagger.py는 캐싱 인프라
+자체가 없었고, few-shot 예시 4개(858자)가 system이 아니라 user 메시지 안에
+있어 구조적으로 캐시 대상이 될 수 없었다. GEO_SYSTEM_PROMPT(2,018자)와
+few-shot을 하나의 system 블록(`GEO_SYSTEM_FULL`, 2,878자)으로 합치고
+classifier.py와 동일한 `cache_control: {ephemeral, ttl: 1h}`을 붙였다.
+build_geo_prompt()는 기사 본문만 담게 됐다(user 메시지 1,124자 → 264자).
+프롬프트 내용은 이동만 했을 뿐 변경하지 않았다 — 이동 전후 system+user
+합산 문자수가 3,142자로 정확히 일치함을 코드로 조립해 확인했다(API 호출
+없이 dict만 구성해 검증, 크레딧 소진 상태라 실행 불가).
+
+Batch API에서 배치 내 여러 요청이 캐시를 공유하는지는 설치된 anthropic
+SDK(0.107.1)의 타입 정의·문서로는 확인 불가였다 — usage.py에
+cache_creation_input_tokens/cache_read_input_tokens 필드는 있으나 배치
+간 공유 여부는 명시돼 있지 않다. 실제 값은 다음 정상 실행의 [USAGE] 로그가
+알려줄 것이다.
+
+classifier.py의 MODEL·ttl·SYSTEM_PROMPT, index.html/app.py/weekly_report.py는
+이번 작업에서 변경하지 않았다.
+
+### 커밋
+- 3d3d986 classifier·geo_tagger 토큰 사용량 로깅 추가
+- (본 커밋) geo_tagger 프롬프트 캐싱 적용, few-shot을 system 블록으로 이동
