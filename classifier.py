@@ -176,8 +176,8 @@ def get_in_progress_batches(client: anthropic.Anthropic) -> list:
     return [b for b in client.messages.batches.list(limit=20) if b.processing_status == "in_progress"]
 
 
-def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> dict[str, dict]:
-    """배치 요청 전송 → polling → {article_id: result_dict} 반환"""
+def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> tuple[dict[str, dict], dict]:
+    """배치 요청 전송 → polling → ({article_id: result_dict}, usage_totals) 반환"""
     requests = [
         {
             "custom_id": article["article_id"],
@@ -212,6 +212,10 @@ def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> d
     results: dict[str, dict] = {}
     cache_hits = 0
     cache_misses = 0
+    total_input_tokens = 0
+    total_output_tokens = 0
+    total_cache_creation_tokens = 0
+    total_cache_read_tokens = 0
     for item in client.messages.batches.results(batch.id):
         aid = item.custom_id
         if item.result.type == "succeeded":
@@ -222,6 +226,10 @@ def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> d
                 cache_hits += 1
             elif getattr(usage, "cache_creation_input_tokens", 0):
                 cache_misses += 1
+            total_input_tokens += getattr(usage, "input_tokens", 0) or 0
+            total_output_tokens += getattr(usage, "output_tokens", 0) or 0
+            total_cache_creation_tokens += getattr(usage, "cache_creation_input_tokens", 0) or 0
+            total_cache_read_tokens += getattr(usage, "cache_read_input_tokens", 0) or 0
         elif item.result.type == "errored":
             print(f"  [BATCH ERROR] {aid}: {item.result.error}")
             results[aid] = dict(EMPTY_RESULT)
@@ -232,8 +240,21 @@ def classify_batch(client: anthropic.Anthropic, batch_articles: list[dict]) -> d
     cache_total = cache_hits + cache_misses
     hit_rate = (cache_hits / cache_total * 100) if cache_total else 0.0
     print(f"    [CACHE] 총 {len(results)}건 / hit(read) {cache_hits} / miss(write) {cache_misses} / 히트율 {hit_rate:.1f}%")
+    print(
+        f"    [USAGE] input_tokens {total_input_tokens} / output_tokens {total_output_tokens} "
+        f"/ cache_creation_input_tokens {total_cache_creation_tokens} "
+        f"/ cache_read_input_tokens {total_cache_read_tokens}"
+    )
 
-    return results
+    usage_totals = {
+        "input_tokens": total_input_tokens,
+        "output_tokens": total_output_tokens,
+        "cache_creation_input_tokens": total_cache_creation_tokens,
+        "cache_read_input_tokens": total_cache_read_tokens,
+        "cache_hits": cache_hits,
+        "cache_misses": cache_misses,
+    }
+    return results, usage_totals
 
 
 # ------------------------------------------------------------------
@@ -297,7 +318,7 @@ def run_classifier() -> dict:
             if a.get("classified", "").lower() == "true" and existing.get("classified", "").lower() != "true":
                 article_map[aid] = a
 
-    batch_results = classify_batch(client, batch_articles)
+    batch_results, usage_totals = classify_batch(client, batch_articles)
 
     # 렌즈 산출물은 labels.db가 source of truth다. articles.csv 저장보다
     # 먼저 확정한다 — 반대 순서면 CSV 저장 실패 시 분류 결과가 labels.db에도
@@ -324,7 +345,7 @@ def run_classifier() -> dict:
     save_articles(list(article_map.values()))
 
     remaining = len(unclassified) - len(batch_articles)
-    return {"success": success, "failed": failed, "remaining": remaining}
+    return {"success": success, "failed": failed, "remaining": remaining, "usage": usage_totals}
 
 
 def main():
@@ -356,6 +377,14 @@ def main():
     print(f"  성공: {result['success']}건")
     print(f"  실패: {result['failed']}건")
     print(f"  남은 미분류: {result['remaining']}건")
+    usage = result.get("usage") or {}
+    if usage:
+        print(
+            f"  누적 토큰 — input {usage.get('input_tokens', 0)} / "
+            f"output {usage.get('output_tokens', 0)} / "
+            f"cache_write {usage.get('cache_creation_input_tokens', 0)} / "
+            f"cache_read {usage.get('cache_read_input_tokens', 0)}"
+        )
     print(f"  → {ARTICLES_CSV}")
 
 

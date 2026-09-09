@@ -255,6 +255,10 @@ def run_batch(client: anthropic.Anthropic, targets: list[dict]) -> dict:
     by_id = {a["article_id"]: a for a in targets}
     conn = geo_store.open_geo()
     ok = fail = 0
+    total_input_tokens = 0
+    total_output_tokens = 0
+    total_cache_creation_tokens = 0
+    total_cache_read_tokens = 0
 
     for item in client.messages.batches.results(batch.id):
         aid = item.custom_id
@@ -271,6 +275,12 @@ def run_batch(client: anthropic.Anthropic, targets: list[dict]) -> dict:
             })
             fail += 1
             continue
+
+        usage = item.result.message.usage
+        total_input_tokens += getattr(usage, "input_tokens", 0) or 0
+        total_output_tokens += getattr(usage, "output_tokens", 0) or 0
+        total_cache_creation_tokens += getattr(usage, "cache_creation_input_tokens", 0) or 0
+        total_cache_read_tokens += getattr(usage, "cache_read_input_tokens", 0) or 0
 
         raw = item.result.message.content[0].text
         try:
@@ -293,7 +303,20 @@ def run_batch(client: anthropic.Anthropic, targets: list[dict]) -> dict:
 
     conn.commit()  # 배치 결과를 전부 받은 뒤 한 번만 commit
     conn.close()
-    return {"ok": ok, "fail": fail}
+    print(
+        f"    [USAGE] input_tokens {total_input_tokens} / output_tokens {total_output_tokens} "
+        f"/ cache_creation_input_tokens {total_cache_creation_tokens} "
+        f"/ cache_read_input_tokens {total_cache_read_tokens}"
+    )
+    return {
+        "ok": ok, "fail": fail,
+        "usage": {
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "cache_creation_input_tokens": total_cache_creation_tokens,
+            "cache_read_input_tokens": total_cache_read_tokens,
+        },
+    }
 
 
 def run_resolve_only(resolver_version: str) -> dict:
@@ -380,6 +403,14 @@ def main():
 
     result = run_batch(client, targets)
     print(f"완료: 성공 {result['ok']} / 실패 {result['fail']}")
+    usage = result.get("usage") or {}
+    if usage:
+        print(
+            f"  누적 토큰 — input {usage.get('input_tokens', 0)} / "
+            f"output {usage.get('output_tokens', 0)} / "
+            f"cache_write {usage.get('cache_creation_input_tokens', 0)} / "
+            f"cache_read {usage.get('cache_read_input_tokens', 0)}"
+        )
 
 
 if __name__ == "__main__":

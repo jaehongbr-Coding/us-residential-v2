@@ -132,8 +132,18 @@ jobs:
               CLS_SUCCESS=${CLS_SUCCESS:-0 또는 스킵}
               CLS_FAIL=${CLS_FAIL:-0 또는 스킵}
 
+              # [USAGE] input_tokens N / output_tokens N / cache_creation_input_tokens N / cache_read_input_tokens N
+              # 배치 여러 개가 돌면 여러 줄이 나올 수 있어 합산한다 (현재는 실행당 배치 1개뿐이라 보통 1줄).
+              CLS_USAGE_LINE=$(grep -oP '\[USAGE\] input_tokens \K[0-9]+ / output_tokens [0-9]+ / cache_creation_input_tokens [0-9]+ / cache_read_input_tokens [0-9]+' classifier_output.log 2>/dev/null \
+                | awk -F' / ' '{gsub(/[^0-9]/,"",$1); gsub(/[^0-9]/,"",$2); gsub(/[^0-9]/,"",$3); gsub(/[^0-9]/,"",$4); in_t+=$1; out_t+=$2; cw+=$3; cr+=$4} END{if(NR>0) print in_t" / "out_t" / "cw" / "cr}')
+              CLS_USAGE_LINE=${CLS_USAGE_LINE:-확인 불가}
+
               GEO_LINE=$(grep -oP '완료: 성공 \K[0-9]+ / 실패 [0-9]+' geo_output.log 2>/dev/null | head -1)
               GEO_LINE=${GEO_LINE:-확인 불가}
+
+              GEO_USAGE_LINE=$(grep -oP '\[USAGE\] input_tokens \K[0-9]+ / output_tokens [0-9]+ / cache_creation_input_tokens [0-9]+ / cache_read_input_tokens [0-9]+' geo_output.log 2>/dev/null \
+                | awk -F' / ' '{gsub(/[^0-9]/,"",$1); gsub(/[^0-9]/,"",$2); gsub(/[^0-9]/,"",$3); gsub(/[^0-9]/,"",$4); in_t+=$1; out_t+=$2; cw+=$3; cr+=$4} END{if(NR>0) print in_t" / "out_t" / "cw" / "cr}')
+              GEO_USAGE_LINE=${GEO_USAGE_LINE:-확인 불가}
 
               ARCHIVE_TOTAL=$(grep -oP '레코드 \K[0-9]+(?=건)' archive_index_output.log 2>/dev/null | head -1)
               ARCHIVE_TOTAL=${ARCHIVE_TOTAL:-확인 불가}
@@ -147,7 +157,9 @@ jobs:
               echo "| ㄴ Player | ${PLAYER_NEW}건 |"
               echo "| ㄴ RSS | ${RSS_NEW}건 |"
               echo "| 분류 성공/실패 | ${CLS_SUCCESS} / ${CLS_FAIL} |"
+              echo "| 분류 토큰 (input/output/cache_write/cache_read) | ${CLS_USAGE_LINE} |"
               echo "| geo 성공/실패 | ${GEO_LINE} |"
+              echo "| geo 토큰 (input/output/cache_write/cache_read) | ${GEO_USAGE_LINE} |"
               echo "| archive_index 총건수 | ${ARCHIVE_TOTAL}건 |"
               echo "| 원장 최신 published_at | ${LATEST_PUB} |"
             fi
