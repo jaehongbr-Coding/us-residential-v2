@@ -1,14 +1,14 @@
-### Daily Collect & Classify — 2026-09-30 01:28 UTC
+### Daily Collect & Classify — 2026-10-01 00:37 UTC
 
 | 항목 | 값 |
 |---|---|
-| 신규 저장 | 97건 |
-| ㄴ Student Housing | 23건 |
-| ㄴ Player | 9건 |
-| ㄴ RSS | 65건 |
-| 분류 성공/실패 | 97 / 0 |
-| 분류 토큰 (input/output/cache_write/cache_read) | 261824 / 32663 / 0 / 0 |
-| geo 성공/실패 | 97 / 실패 0 |
-| geo 토큰 (input/output/cache_write/cache_read) | 86297 / 5007 / 0 / 0 |
-| archive_index 총건수 | 9166건 |
-| 원장 최신 published_at | 2026-09-29 |
+| 신규 저장 | 102건 |
+| ㄴ Student Housing | 16건 |
+| ㄴ Player | 10건 |
+| ㄴ RSS | 76건 |
+| 분류 성공/실패 | 102 / 0 |
+| 분류 토큰 (input/output/cache_write/cache_read) | 275748 / 34346 / 0 / 0 |
+| geo 성공/실패 | 102 / 실패 0 |
+| geo 토큰 (input/output/cache_write/cache_read) | 91213 / 6079 / 0 / 0 |
+| archive_index 총건수 | 9268건 |
+| 원장 최신 published_at | 2026-09-30 |
