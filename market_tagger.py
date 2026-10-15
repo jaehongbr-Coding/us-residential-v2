@@ -25,7 +25,8 @@ APPLICABLE_CONF   = {"exact", "inferred", "source_inferred"}
 
 def as_of_for(published_at: str) -> str:
     dt = pd.to_datetime(published_at, errors="coerce", utc=True)
-    return "" if pd.isna(dt) else str(dt.to_period("M") - 2)
+    if pd.isna(dt): return ""
+    return str(dt.tz_convert(None).to_period("M") - 2)   # UTC 기준 naive로 바꾼 뒤 Period (tz 경고 방지)
 
 
 def load():
