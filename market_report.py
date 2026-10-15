@@ -47,6 +47,14 @@ def _watch_list(data: dict) -> list[tuple[str, str]]:
     return list(WATCH)
 
 
+def build_market_table(context_path: str = "data/market/context_latest.json") -> str | None:
+    """시장 표(헤더+구분선+7행)만. 데이터가 없으면 None — LLM 참조 블록 생략 판단용."""
+    md = build_market_section(context_path)
+    if md == NO_DATA:
+        return None
+    return "\n".join(ln for ln in md.splitlines() if ln.startswith("|"))
+
+
 def build_market_section(context_path: str = "data/market/context_latest.json") -> str:
     try:
         data = json.loads(Path(context_path).read_text(encoding="utf-8"))

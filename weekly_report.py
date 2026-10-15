@@ -83,6 +83,23 @@ REPORT_TEMPLATE = """\
 우미글로벌 해외사업팀 관점에서의 전략적 함의. BTR/Student Housing/GP 파트너십 기회 중심.
 """
 
+# 시장 데이터 섹션을 끼워 넣을 기준 헤딩 — REPORT_TEMPLATE의 4번 섹션 제목과 같은 문구.
+# LLM이 "## 4. 시사점 (우미글로벌 관점)"처럼 뒤에 덧붙이는 경우가 있어 접두어로 찾는다.
+IMPLICATIONS_HEADING = "## 4. 시사점"
+assert IMPLICATIONS_HEADING in REPORT_TEMPLATE
+
+# 시장 데이터 LLM 참조 블록 (Plan_market §4.9 6.3) — 기사 목록 뒤, 사용자 메시지 끝에 덧붙인다.
+MARKET_REFERENCE = """\
+
+--- 참고: 시장 데이터(공급) ---
+{table}
+위 시장 데이터는 참고용이다. 기사 요약에서 해당 지역을 언급할 때 판정 라벨(평년/공급 급증/공급 감소)을 인용할 수 있다. 수치의 원인·인과·전망을 서술하지 말라. 판정불가 지역은 시장 수치를 언급하지 말라. 판정 라벨과 기사 관련성 등급을 합쳐 새 등급을 만들지 말라. 시장 데이터 섹션은 별도로 자동 생성되므로 네가 다시 쓰지 말라.
+"""
+
+GEO_DB = "geo_tags.db"
+GEO_APPLICABLE_SCOPES = {"metro", "local"}                       # market_tagger 적용 조건과 동일
+GEO_APPLICABLE_CONF   = {"exact", "inferred", "source_inferred"}
+
 
 # ------------------------------------------------------------------
 # 데이터 로드 및 필터
@@ -119,17 +136,70 @@ def filter_by_period(articles: list[dict], days: int) -> list[dict]:
     return result
 
 
-def format_articles(articles: list[dict]) -> str:
+def format_articles(articles: list[dict], region_of: dict | None = None) -> str:
+    """region_of: {article_id: "LA"} — WATCH 7 지역 기사에만 줄 끝 ' [지역: LA]' 토큰. 없으면 기존 출력 그대로."""
+    region_of = region_of or {}
     lines = []
     for i, a in enumerate(articles, 1):
         tags = a.get("event_tags", "")
+        region = region_of.get(a.get("article_id", ""))
         lines.append(
             f"{i}. [{a.get('category','')} / {a.get('sector','')}] "
             f"{a.get('title','')}\n"
             f"   요약: {a.get('summary','')[:200]}\n"
-            f"   태그: {tags}"
+            f"   태그: {tags}" + (f" [지역: {region}]" if region else "")
         )
     return "\n\n".join(lines)
+
+
+def load_watch_regions(article_ids: list[str], db_path: str = GEO_DB) -> dict:
+    """geo_tags.db 읽기 전용 조인 → {article_id: 'LA'} (WATCH 7 + market_tagger 적용 조건 충족 기사만).
+    DB가 없거나 읽기 실패면 조용히 {} — 리포트는 토큰 없이 그대로 생성된다."""
+    if not article_ids or not os.path.exists(db_path):
+        return {}
+    try:
+        import sqlite3
+        from market_context import WATCH
+        short_of = dict(WATCH)
+        conn = sqlite3.connect(f"file:{os.path.abspath(db_path)}?mode=ro", uri=True)
+        try:
+            out = {}
+            for i in range(0, len(article_ids), 900):
+                chunk = article_ids[i:i + 900]
+                q = ("SELECT article_id, geo_cbsa_code, geo_scope, geo_confidence FROM geo_tags "
+                     f"WHERE article_id IN ({','.join('?' * len(chunk))})")
+                for aid, codes, scope, conf in conn.execute(q, chunk):
+                    if scope not in GEO_APPLICABLE_SCOPES or conf not in GEO_APPLICABLE_CONF:
+                        continue
+                    shorts = [short_of[c.strip()] for c in (codes or "").split("|") if c.strip() in short_of]
+                    if shorts:
+                        out[aid] = "·".join(dict.fromkeys(shorts))
+            return out
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[WARN] geo 지역 토큰 생략: {type(e).__name__}: {e}")
+        return {}
+
+
+def insert_market_section(report: str, section: str) -> str:
+    """시장 섹션을 '시사점' H2 바로 앞에 삽입. 헤딩이 없으면 끝에 덧붙인다 (폴백)."""
+    lines = report.split("\n")
+    for i, ln in enumerate(lines):
+        if ln.strip().startswith(IMPLICATIONS_HEADING):
+            return "\n".join(lines[:i]).rstrip() + "\n\n" + section.rstrip() + "\n\n" + "\n".join(lines[i:])
+    return report + "\n\n" + section
+
+
+def market_reference_block() -> str:
+    """LLM 사용자 메시지 끝에 붙일 참조 블록. 시장 데이터가 없으면 빈 문자열 (블록 생략)."""
+    try:
+        from market_report import build_market_table
+        table = build_market_table()
+    except Exception as e:
+        print(f"[WARN] 시장 참조 블록 생략: {type(e).__name__}: {e}")
+        return ""
+    return MARKET_REFERENCE.format(table=table) if table else ""
 
 
 # ------------------------------------------------------------------
@@ -209,7 +279,9 @@ def generate_report(articles: list[dict], period: str) -> str:
         articles,
         key=lambda a: (0 if a.get("woomi_relevance") == "높음" else 1 if a.get("woomi_relevance") == "보통" else 2)
     )[:100]
-    articles_text = format_articles(sorted_articles)
+    is_weekly = period == "weekly"
+    region_of = load_watch_regions([a.get("article_id", "") for a in sorted_articles]) if is_weekly else {}
+    articles_text = format_articles(sorted_articles, region_of)
     user_prompt = REPORT_TEMPLATE.format(
         period_label=PERIOD_LABEL[period],
         count=len(articles),
@@ -217,6 +289,8 @@ def generate_report(articles: list[dict], period: str) -> str:
         date_to=date_to,
         articles_text=articles_text,
     )
+    if is_weekly:
+        user_prompt += market_reference_block()
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -230,8 +304,8 @@ def generate_report(articles: list[dict], period: str) -> str:
         messages=[{"role": "user", "content": user_prompt}],
     )
     report = response.content[0].text.strip()
-    if period == "weekly":
-        report += "\n\n" + _market_section()
+    if is_weekly:
+        report = insert_market_section(report, _market_section())
     return report
 
 

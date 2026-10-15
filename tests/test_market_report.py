@@ -47,6 +47,32 @@ def test_no_watch_key_falls_back_to_constant(tmp_path):
     assert [r.split("|")[1].strip().split(" · ")[0] for r in rows] == [s for _, s in WATCH]
 
 
+def test_insert_before_implications_or_append():
+    sec = "## 시장 데이터(공급) — WATCH 7\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+    with_h = "## 1. 개발 현황\n- x\n\n## 4. 시사점 (우미글로벌 관점)\n- y"
+    out = weekly_report.insert_market_section(with_h, sec)
+    assert out.index("## 시장 데이터") < out.index("## 4. 시사점") and out.endswith("- y")
+    without_h = "## 1. 개발 현황\n- x"
+    out2 = weekly_report.insert_market_section(without_h, sec)
+    assert out2.startswith(without_h) and out2.rstrip().endswith("| 1 | 2 |")
+
+
+def test_reference_block_skipped_without_data(monkeypatch):
+    import market_report
+    monkeypatch.setattr(market_report, "build_market_table", lambda *a, **k: None)
+    assert weekly_report.market_reference_block() == ""
+    monkeypatch.setattr(market_report, "build_market_table", lambda *a, **k: "| t |\n|---|\n| 1 |")
+    blk = weekly_report.market_reference_block()
+    assert "--- 참고: 시장 데이터(공급) ---" in blk and "| 1 |" in blk and "다시 쓰지 말라" in blk
+
+
+def test_region_tokens_missing_db(tmp_path):
+    assert weekly_report.load_watch_regions(["a1"], db_path=str(tmp_path / "none.db")) == {}
+    arts = [{"article_id": "a1", "title": "T", "summary": "S", "event_tags": "x"}]
+    assert weekly_report.format_articles(arts) == weekly_report.format_articles(arts, {})
+    assert weekly_report.format_articles(arts, {"a1": "LA"}).endswith("태그: x [지역: LA]")
+
+
 def test_docx_table_branch_and_fallback(tmp_path, monkeypatch):
     from docx import Document
     monkeypatch.setattr(weekly_report, "REPORTS_DIR", str(tmp_path))
