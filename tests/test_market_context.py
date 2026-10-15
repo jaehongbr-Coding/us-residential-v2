@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import pandas as pd  # noqa: E402
-from market_context import compute, region_map  # noqa: E402
+from market_context import VOLUME_FLOOR, compute, region_map  # noqa: E402
 
 CBSA = "99999"
 
@@ -25,7 +25,8 @@ def test_ratio_identity():
 
 def test_low_volume():
     ctx = compute(CBSA, "2026-08", _bps([10] * 48), None, {})
-    assert ctx.units_avg3y == 120
+    assert VOLUME_FLOOR == 1000
+    assert ctx.units_avg3y == 120 and ctx.units_avg3y < VOLUME_FLOOR
     assert ctx.coverage == "low_volume"
     assert ctx.ratio_12m_vs_3y is not None
 

@@ -6,7 +6,9 @@ import pandas as pd
 RULE_VERSION     = "v1"
 WINDOW_M         = 12      # 최근 창
 BASE_YEARS       = 3       # 기저선 (Q1)
-VOLUME_FLOOR     = 300     # 3년 평균 연간 5+유닛 하한 (초안). Phase 2.2 실측 분포로 보정
+# 3년 평균 연간 5+유닛 하한. 2026-10-15 실측: 하한 300에서는 양극단이 프로젝트 1~2건 노이즈.
+# 1000이면 80 CBSA, 분포 0.64~1.46. p20/p80 = 0.742/1.256
+VOLUME_FLOOR     = 1000
 LAG_BUCKET       = "20+"   # research_market §4.2.5
 
 
