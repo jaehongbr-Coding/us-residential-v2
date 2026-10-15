@@ -13,6 +13,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"
           onerror="console.error('marked.js 로드 실패')"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"
+          onerror="console.error('Chart.js 로드 실패')"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -190,6 +192,27 @@
     .mk-surge   { background:#fff4d6; border-color:#f4b400; color:#6b4e00; }
     .mk-drought { background:#e8eef5; border-color:#1B3A5C; color:#1B3A5C; }
 
+    /* ── 마켓워치 ── */
+    .market-spinner { display: flex; align-items: center; justify-content: center; padding: 60px; color: #999; font-size: 14px; gap: 10px; }
+    .market-meta { font-size: 11px; color: #888; margin-bottom: 10px; }
+    .market-select { padding: 6px 10px; font-size: 13px; border: 1px solid #ccc; border-radius: 6px; max-width: 100%; margin-bottom: 14px; }
+    .market-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; }
+    .market-tile { background: #f2f6fa; border: 1px solid #dce6ef; border-radius: 8px; padding: 10px 12px; }
+    .market-tile .t-label { font-size: 11px; color: #888; margin-bottom: 4px; }
+    .market-tile .t-value { font-size: 20px; font-weight: 700; color: #1B3A5C; }
+    .market-tile .t-sub   { font-size: 11px; color: #888; margin-top: 2px; }
+    .market-flags { margin: 0 0 12px; }
+    .market-flags .mk-chip { font-size: 12px; line-height: 20px; padding: 0 10px; border-radius: 10px; }
+    .market-chart-box { position: relative; height: 240px; margin-bottom: 16px; }
+    .market-completion { border-collapse: collapse; width: auto; min-width: 220px; table-layout: auto; margin-bottom: 12px; }
+    .market-completion th, .market-completion td { padding: 4px 12px; font-size: 12px; border-bottom: 1px solid #f0f0f0; }
+    .market-completion td.num { text-align: right; }
+    .market-note { font-size: 11px; color: #888; line-height: 1.6; }
+    .market-note p { margin-bottom: 4px; }
+    @media (max-width: 768px) {
+      .market-tiles { grid-template-columns: repeat(2, 1fr); }
+    }
+
     .title-link {
       color: #1a73e8;
       text-decoration: none;
@@ -362,6 +385,7 @@
     <div class="page-tabs">
       <button class="page-tab-btn active" data-page="page-news" onclick="switchPage(this)">📰 뉴스</button>
       <button class="page-tab-btn" data-page="page-archive" onclick="switchPage(this)">🗄️ 아카이브</button>
+      <button class="page-tab-btn" data-page="page-market" onclick="switchPage(this)">📈 마켓워치</button>
     </div>
 
     <div id="page-news" class="page-panel active">
@@ -498,6 +522,22 @@
         </div>
       </div><!-- #archiveApp -->
     </div><!-- #page-archive -->
+
+    <div id="page-market" class="page-panel">
+      <div id="marketSpinner" class="market-spinner"><div class="spin"></div> 시장 데이터 로딩 중...</div>
+      <div id="marketApp" style="display:none">
+        <div class="section">
+          <div class="section-title">📈 마켓워치</div>
+          <div id="marketMeta" class="market-meta"></div>
+          <select id="marketSelect" class="market-select" onchange="renderMarket(this.value)"></select>
+          <div id="marketTiles" class="market-tiles"></div>
+          <div id="marketFlags" class="mk-row market-flags"></div>
+          <div class="market-chart-box"><canvas id="marketChart"></canvas></div>
+          <div id="marketCompletion"></div>
+          <div id="marketNote" class="market-note"></div>
+        </div>
+      </div>
+    </div><!-- #page-market -->
   </main>
 </div>
 
@@ -736,6 +776,9 @@ function switchPage(btn) {
     // loadArchiveData() 내부에서 archiveLoaded 플래그로 최초 1회만 fetch한다.
     loadArchiveData();
   }
+  if (btn.dataset.page === "page-market") {
+    loadMarketData();   // marketLoaded 플래그로 최초 1회만 fetch (1.5MB)
+  }
 }
 
 /* ── Archive stats (누적 지표 헤더) ── */
@@ -771,6 +814,7 @@ function updateArchiveStats() {
    로직은 여기서 건드리지 않는다(별개 섹션, 별개 데이터).
    ══════════════════════════════════════════════════════════ */
 const ARCHIVE_INDEX_URL = "https://raw.githubusercontent.com/jaehongbr-Coding/us-residential-v2/main/archive_index.json";
+const MARKET_CTX_URL = "https://raw.githubusercontent.com/jaehongbr-Coding/us-residential-v2/main/data/market/context_latest.json";
 let archiveData = null;     // fetch 1회, 이후 전역 보관 — 탭 재방문 시 재요청 안 함
 let archiveLoaded = false;  // 아카이브 탭 최초 클릭(또는 해시 진입) 시에만 true
 let archiveRenderLimit = 200; // 7,427건을 한 번에 그리지 않는다 — "더 보기"로 증가
@@ -1250,6 +1294,121 @@ if ('serviceWorker' in navigator) {
     swRefreshed = true;
     window.location.reload();
   });
+}
+
+/* ══════════════════════════════════════════════════════════
+   📈 마켓워치 — data/market/context_latest.json 소비 (market_tagger.py 산출).
+   화면은 계산하지 않고 읽기만 한다. 판정(flags)은 JSON 값을 그대로 표시.
+   ══════════════════════════════════════════════════════════ */
+const MARKET_WATCH = ["12060","19100","31080","42660","19740","38060","17860"];
+const MARKET_COV_LABEL = { ok: "판정 가능", low_volume: "물량 부족", no_data: "데이터 없음" };
+let marketData = null;
+let marketLoaded = false;
+let marketChart = null;
+
+function loadMarketData() {
+  if (marketLoaded) return;
+  marketLoaded = true;
+  fetch(MARKET_CTX_URL)
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then(data => {
+      marketData = data;
+      document.getElementById("marketSpinner").style.display = "none";
+      document.getElementById("marketApp").style.display = "block";
+      document.getElementById("marketMeta").textContent =
+        `기준월 ${data.as_of} · 규칙 ${data.rule_version} · 출처 Census BPS·SOC`;
+      buildMarketSelect();
+      renderMarket("12060");
+    })
+    .catch(err => {
+      document.getElementById("marketSpinner").innerHTML =
+        `<span style="color:#c00">시장 데이터 로드 실패: ${escHtml(err.message)}</span>`;
+    });
+}
+
+function buildMarketSelect() {
+  const cb = marketData.cbsa;
+  const watch = MARKET_WATCH.filter(c => cb[c]).map(c =>
+    `<option value="${c}">${CBSA_SHORT[c]} — ${escHtml(cb[c].name)}</option>`);
+  const rest = Object.keys(cb).filter(c => !MARKET_WATCH.includes(c))
+    .sort((a, b) => cb[a].name.localeCompare(cb[b].name))
+    .map(c => `<option value="${c}">${escHtml(cb[c].name)}</option>`);
+  document.getElementById("marketSelect").innerHTML =
+    watch.join("") + '<option disabled>──────────</option>' + rest.join("");
+}
+
+function marketTile(label, value, sub) {
+  return `<div class="market-tile"><div class="t-label">${label}</div>
+    <div class="t-value">${value}</div>${sub ? `<div class="t-sub">${sub}</div>` : ""}</div>`;
+}
+
+function renderMarket(code) {
+  const c = marketData && marketData.cbsa[code];
+  if (!c) return;
+  document.getElementById("marketSelect").value = code;
+  const num = v => (typeof v === "number" ? v.toLocaleString() : "—");
+
+  document.getElementById("marketTiles").innerHTML = [
+    marketTile("3년 대비", typeof c.ratio_12m_vs_3y === "number" ? c.ratio_12m_vs_3y.toFixed(2) : "—"),
+    marketTile("판정", MARKET_COV_LABEL[c.coverage] || escHtml(c.coverage)),
+    marketTile("12개월 허가", num(c.units_12m), `3년평균 ${num(c.units_avg3y)}`),
+    marketTile("기사", c.article_counts && c.article_counts.total != null ? num(c.article_counts.total) : "—"),
+  ].join("");
+
+  const flagRows = c.flags.length ? c.flags.map(f => [f]) : [[""]];
+  document.getElementById("marketFlags").innerHTML =
+    flagRows.map(([f]) => mkChip(code, f, c.ratio_12m_vs_3y, c.coverage, { [code]: c.name }, false)).join("");
+
+  // 차트: 36개월 bar + 12개월 이동합 line (첫 11개월은 null)
+  const m = c.monthly || [];
+  const labels = m.map(x => x.period);
+  const bars = m.map(x => x.u5_units);
+  const roll = bars.map((_, i) => i < 11 ? null : bars.slice(i - 11, i + 1).reduce((a, b) => a + b, 0));
+  if (marketChart) { marketChart.destroy(); marketChart = null; }
+  if (typeof Chart !== "undefined") {
+    marketChart = new Chart(document.getElementById("marketChart"), {
+      data: {
+        labels,
+        datasets: [
+          { type: "bar", label: "월간 5+유닛 허가", data: bars, backgroundColor: "#1B3A5C", yAxisID: "y", order: 2 },
+          { type: "line", label: "12개월 이동합", data: roll, borderColor: "#2E75B6", backgroundColor: "#2E75B6",
+            pointRadius: 0, borderWidth: 2, yAxisID: "y1", spanGaps: false, order: 1 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+        scales: {
+          x: { ticks: { autoSkip: false, maxRotation: 0, font: { size: 10 },
+                        // 3개월마다 라벨. 모바일 폭(<600px)에서는 겹쳐서 6개월마다
+                        callback: (v, i) => (i % (window.innerWidth < 600 ? 6 : 3) === 0 ? labels[i] : "") },
+               grid: { display: false } },
+          y:  { position: "left", beginAtZero: true, ticks: { font: { size: 10 } } },
+          y1: { position: "right", beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } },
+        },
+      },
+    });
+  }
+
+  const bq = (c.expected_completion && c.expected_completion.by_quarter) || {};
+  const qs = Object.keys(bq);
+  document.getElementById("marketCompletion").innerHTML = qs.length
+    ? `<table class="market-completion"><thead><tr><th>준공 예상 분기</th><th>유닛</th></tr></thead><tbody>${
+        qs.map(q => `<tr><td>${escHtml(q)}</td><td class="num">${num(bq[q])}</td></tr>`).join("")}</tbody></table>`
+    : '<p class="market-note">lag 산출 불가</p>';
+
+  const lag = c.expected_completion ? c.expected_completion.lag_months : null;
+  const notes = [];
+  if (c.coverage === "low_volume") {
+    notes.push(`판정 불가 — 3년 평균 ${num(c.units_avg3y)}유닛/년 &lt; 하한 1,000. 수치는 참고용.`);
+  }
+  notes.push(`기저선은 직전 36개월 평균. 2021~22년 허가 급증기가 포함돼 전국 중앙값이 1 미만. ` +
+    `준공 예상은 SOC ${escHtml(c.region ?? "—")} 평균 lag ${lag ?? "—"}개월(20+유닛) 적용 추정치 — 미착공·취소 미반영.`);
+  document.getElementById("marketNote").innerHTML = notes.map(n => `<p>${n}</p>`).join("");
 }
 
 // #archive?... 해시로 직접 진입(데모용 딥링크) — 아카이브 탭 클릭과

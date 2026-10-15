@@ -41,7 +41,9 @@ self.addEventListener("fetch", (event) => {
   // 않아 PWA 설치 사용자에게 아카이브가 그 시점 그대로 굳는다 — index.html/
   // manifest.json/아이콘 변경 시에만 CACHE_NAME이 갱신되므로(update_sw_version.yml)
   // 데이터 파일 변경으로는 캐시가 무효화되지 않기 때문이다.
-  const isNetworkFirst = request.url.includes("articles.csv") || request.url.includes("archive_index.json");
+  // context_latest.json(마켓워치)도 daily·monthly 실행마다 갱신되므로 같은 이유로 포함.
+  const isNetworkFirst = request.url.includes("articles.csv") || request.url.includes("archive_index.json")
+    || request.url.includes("context_latest.json");
 
   if (isNetworkFirst) {
     // Network First: 최신 데이터 우선, 실패 시 캐시된 마지막 데이터 사용
