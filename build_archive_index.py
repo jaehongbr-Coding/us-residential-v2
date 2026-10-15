@@ -24,6 +24,8 @@ from datetime import datetime, timezone
 import archive_manager
 import label_store
 import geo_store
+import market_store
+from market_context import RULE_VERSION as MARKET_RULE_VERSION
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -43,6 +45,12 @@ def build():
     geo_conn = geo_store.open_geo()
     geo_map = geo_store.get_geo(geo_conn, article_ids)
     geo_conn.close()
+
+    # 시장 맥락 렌즈 (market_flags.db). not_applicable 은 화면에 내보내지 않는다
+    market_conn = market_store.open_market()
+    market_map = market_store.get_flags(market_conn, article_ids, rule_version=MARKET_RULE_VERSION)
+    market_conn.close()
+    market_flag_values = set()
 
     records = []
     labels_missing = 0
@@ -108,7 +116,7 @@ def build():
             if code not in cbsa_titles and i < len(titles):
                 cbsa_titles[code] = titles[i]
 
-        records.append({
+        rec = {
             "id": aid,
             "d": pub,
             "s": r.get("source", ""),
@@ -123,7 +131,13 @@ def build():
             "st": geo_state,
             "sc": geo.get("geo_scope", "") or "",
             "gc": geo.get("geo_confidence", "") or "",
-        })
+        }
+        mk_rows = [m for m in market_map.get(aid, []) if m["coverage"] != "not_applicable"]
+        if mk_rows:  # 없으면 키 자체를 생략 (파일 크기 관리)
+            rec["mk"] = [[m["cbsa_code"], m["flags"], m["ratio_12m_vs_3y"], m["coverage"]] for m in mk_rows]
+            for m in mk_rows:
+                market_flag_values.update(f for f in (m["flags"] or "").split("|") if f)
+        records.append(rec)
 
     window_start = min(published_dates) if published_dates else ""
     window_end = max(published_dates) if published_dates else ""
@@ -138,6 +152,7 @@ def build():
         "categories": [{"value": k, "count": v} for k, v in category_counter.most_common()],
         "event_tags": [{"value": k, "count": v} for k, v in event_tag_counter.most_common()],
         "years": [{"value": k, "count": v} for k, v in sorted(year_counter.items())],
+        "market_flags": sorted(market_flag_values),
     }
 
     payload = {
