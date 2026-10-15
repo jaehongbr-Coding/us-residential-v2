@@ -1,0 +1,13 @@
+name: Diagnose Market Sources (one-off)
+on: { workflow_dispatch: }
+concurrency: { group: diagnose-market, cancel-in-progress: false }
+permissions: { contents: read }
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt
+      - run: python diagnose_market.py
