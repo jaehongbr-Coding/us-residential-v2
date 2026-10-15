@@ -47,8 +47,26 @@ def _watch_list(data: dict) -> list[tuple[str, str]]:
     return list(WATCH)
 
 
+def build_market_labels(context_path: str = "data/market/context_latest.json") -> str | None:
+    """LLM 참조용 라벨 한 줄 — 'ATL 평년 · DFW 평년 · … · COMO 판정불가'. 수치는 넣지 않는다.
+    데이터가 없으면 None (참조 블록 생략)."""
+    try:
+        data = json.loads(Path(context_path).read_text(encoding="utf-8"))
+        cbsa = data["cbsa"]
+        if not isinstance(cbsa, dict):
+            return None
+        parts = []
+        for code, short in _watch_list(data):
+            c = cbsa.get(code) or {}
+            v = _verdict(c) if c else "판정불가"
+            parts.append(f"{short} {'판정불가' if v.startswith('판정불가') else v}")
+        return " · ".join(parts)
+    except Exception:
+        return None
+
+
 def build_market_table(context_path: str = "data/market/context_latest.json") -> str | None:
-    """시장 표(헤더+구분선+7행)만. 데이터가 없으면 None — LLM 참조 블록 생략 판단용."""
+    """시장 표(헤더+구분선+7행)만 — md 섹션 확인용. 데이터가 없으면 None."""
     md = build_market_section(context_path)
     if md == NO_DATA:
         return None

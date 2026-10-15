@@ -89,12 +89,15 @@ IMPLICATIONS_HEADING = "## 4. 시사점"
 assert IMPLICATIONS_HEADING in REPORT_TEMPLATE
 
 # 시장 데이터 LLM 참조 블록 (Plan_market §4.9 6.3) — 기사 목록 뒤, 사용자 메시지 끝에 덧붙인다.
+# 6.5 검증에서 표(수치)를 주면 시사점에서 라벨·준공 추정치를 투자 판단 근거로 끌어썼다 → 라벨 한 줄만 준다.
+# 허가 건수·비율·준공 추정치는 LLM에 전달하지 않는다 (시장 표는 Python이 별도로 삽입).
 MARKET_REFERENCE = """\
 
---- 참고: 시장 데이터(공급) ---
-{table}
-위 시장 데이터는 참고용이다. 기사 요약에서 해당 지역을 언급할 때 판정 라벨(평년/공급 급증/공급 감소)을 인용할 수 있다. 수치의 원인·인과·전망을 서술하지 말라. 판정불가 지역은 시장 수치를 언급하지 말라. 판정 라벨과 기사 관련성 등급을 합쳐 새 등급을 만들지 말라. 시장 데이터 섹션은 별도로 자동 생성되므로 네가 다시 쓰지 말라.
+--- 참고: 지역 공급 판정(자동 규칙, 참고용) ---
+{labels}
+사용 규칙: (1) 1~3절에서 해당 지역 기사를 요약할 때 괄호 태그로만 붙인다. 예: "Hines가 Buckhead 312유닛 매입(ATL·평년)". (2) 4. 시사점에서는 이 라벨을 쓰지 말라 — 시사점은 기사 내용만 근거로 한다. (3) 라벨에서 수요·흡수·적합성·우선순위를 끌어내지 말라. 판정불가 지역은 라벨을 붙이지 말라. (4) 시장 데이터 표는 별도 자동 생성되므로 네가 쓰지 말라.
 """
+MARKET_LEAK_TERMS = ("평년", "공급 급증", "공급 감소", "판정불가", "준공")
 
 GEO_DB = "geo_tags.db"
 GEO_APPLICABLE_SCOPES = {"metro", "local"}                       # market_tagger 적용 조건과 동일
@@ -192,14 +195,31 @@ def insert_market_section(report: str, section: str) -> str:
 
 
 def market_reference_block() -> str:
-    """LLM 사용자 메시지 끝에 붙일 참조 블록. 시장 데이터가 없으면 빈 문자열 (블록 생략)."""
+    """LLM 사용자 메시지 끝에 붙일 참조 블록(라벨 한 줄). 시장 데이터가 없으면 빈 문자열 (블록 생략)."""
     try:
-        from market_report import build_market_table
-        table = build_market_table()
+        from market_report import build_market_labels
+        labels = build_market_labels()
     except Exception as e:
         print(f"[WARN] 시장 참조 블록 생략: {type(e).__name__}: {e}")
         return ""
-    return MARKET_REFERENCE.format(table=table) if table else ""
+    return MARKET_REFERENCE.format(labels=labels) if labels else ""
+
+
+def check_market_leakage(md: str) -> list[str]:
+    """'4. 시사점' 절(다음 H2 또는 끝까지)에서 시장 라벨·'준공'이 들어간 문장을 돌려준다.
+    1~3절의 괄호 태그는 검사 대상이 아니다. 재생성·수정은 하지 않는다 — 로그용."""
+    lines = md.split("\n")
+    start = next((i for i, ln in enumerate(lines) if ln.strip().startswith(IMPLICATIONS_HEADING)), None)
+    if start is None:
+        return []
+    end = next((j for j in range(start + 1, len(lines)) if lines[j].startswith("## ")), len(lines))
+    hits = []
+    for ln in lines[start + 1:end]:
+        text = re.sub(r"^\s*(?:[-•*]|\d+\.)\s+", "", ln).strip()   # bullet 기호 제거
+        for sent in re.split(r"(?<=[.!?。])\s+", text):
+            if sent and any(t in sent for t in MARKET_LEAK_TERMS):
+                hits.append(sent)
+    return hits
 
 
 # ------------------------------------------------------------------
@@ -290,7 +310,9 @@ def generate_report(articles: list[dict], period: str) -> str:
         articles_text=articles_text,
     )
     if is_weekly:
-        user_prompt += market_reference_block()
+        ref = market_reference_block()
+        user_prompt += ref
+        print(f"시장 참조 블록: {'포함' if ref else '생략(데이터 없음)'} / 지역 토큰 {len(region_of)}건")
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -305,7 +327,18 @@ def generate_report(articles: list[dict], period: str) -> str:
     )
     report = response.content[0].text.strip()
     if is_weekly:
-        report = insert_market_section(report, _market_section())
+        leaks = check_market_leakage(report)   # LLM 출력만 검사 (재생성·수정 없음)
+        if leaks:
+            print(f"[WARN] 시장 라벨 사후검사: 시사점 절 위반 {len(leaks)}건")
+            for s in leaks:
+                print(f"  - {s}")
+        else:
+            print("시장 라벨 사후검사: 시사점 절 위반 0건")
+        section = _market_section()
+        has_heading = any(ln.strip().startswith(IMPLICATIONS_HEADING) for ln in report.split("\n"))
+        report = insert_market_section(report, section)
+        state = "데이터 없음" if "시장 데이터 없음" in section else ("시사점 앞 삽입" if has_heading else "끝에 덧붙임(시사점 헤딩 없음)")
+        print(f"시장 데이터 섹션: {state}")
     return report
 
 

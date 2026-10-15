@@ -57,13 +57,31 @@ def test_insert_before_implications_or_append():
     assert out2.startswith(without_h) and out2.rstrip().endswith("| 1 | 2 |")
 
 
-def test_reference_block_skipped_without_data(monkeypatch):
+def test_reference_block_labels_only(monkeypatch):
     import market_report
-    monkeypatch.setattr(market_report, "build_market_table", lambda *a, **k: None)
+    monkeypatch.setattr(market_report, "build_market_labels", lambda *a, **k: None)
     assert weekly_report.market_reference_block() == ""
-    monkeypatch.setattr(market_report, "build_market_table", lambda *a, **k: "| t |\n|---|\n| 1 |")
-    blk = weekly_report.market_reference_block()
-    assert "--- 참고: 시장 데이터(공급) ---" in blk and "| 1 |" in blk and "다시 쓰지 말라" in blk
+    monkeypatch.undo()
+    blk = weekly_report.market_reference_block()   # 실제 context_latest.json
+    assert "--- 참고: 지역 공급 판정(자동 규칙, 참고용) ---" in blk
+    assert "ATL 평년 · DFW 평년 · LA 공급 급증 · SEA 공급 급증 · DEN 평년 · PHX 평년 · COMO 판정불가" in blk
+    assert "|" not in blk and "12,140" not in blk and "9,878" not in blk   # 표·수치·준공 추정치 미전달
+
+
+def test_leakage_flags_implications_only():
+    md = ("## 1. 개발 현황\n- Hines가 Buckhead 312유닛 매입(ATL·평년). LA 착공(LA·공급 급증).\n\n"
+          "## 시장 데이터(공급) — WATCH 7\n| 지역 | 판정 |\n|---|---|\n| ATL | 평년 |\n\n"
+          "## 4. 시사점 (우미글로벌 관점)\n"
+          "- PHX는 평년 국면으로 BTR 여건 양호. JV 기회 주목.\n"
+          "- DFW는 2027 예상 준공 물량이 높아 모니터링 필요.\n\n---\n*맺음말*")
+    hits = weekly_report.check_market_leakage(md)
+    assert hits == ["PHX는 평년 국면으로 BTR 여건 양호.", "DFW는 2027 예상 준공 물량이 높아 모니터링 필요."]
+
+
+def test_leakage_clean_returns_empty():
+    md = ("## 1. 개발 현황\n- 매입(ATL·평년), 착공(SEA·공급 급증).\n\n"
+          "## 4. 시사점\n- 일본계 자본 JV 진입 패턴 정착. 디스트레스 자산 매입 검토.\n")
+    assert weekly_report.check_market_leakage(md) == []
 
 
 def test_region_tokens_missing_db(tmp_path):
