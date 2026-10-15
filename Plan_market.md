@@ -911,12 +911,12 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"];
   - 검증: 관심 7개 CBSA의 coverage·ratio·flags·lag_months·by_quarter 표
 
 ### Phase 3 — 기사 태깅 (**전제 충족됨**: geo_tags.db 10,249행 존재)
-- [ ] 3.0 `market_store.py` + `tests/test_market_store.py` + `.gitattributes` — 커밋 `feat: market_flags.db 렌즈 스토어`
-- [ ] 3.1 `market_tagger.py --mode incremental` 로컬 1회 실행 = 원장 10,249건 소급 — 커밋 `data: market_flags 백필`
+- [x] 3.0 `market_store.py` + `tests/test_market_store.py` + `.gitattributes` — 커밋 `feat: market_flags.db 렌즈 스토어`
+- [x] 3.1 `market_tagger.py --mode incremental` 로컬 1회 실행 = 원장 10,249건 소급 — 커밋 `data: market_flags 백필`
   - 검증: 행수(≈5,185 + 다중 90), coverage 분포, flags 분포, 관심 7 CBSA별 coverage 분포, `woomi_relevance`(labels.db) × flags 교차표
-- [ ] 3.2 `build_archive_index.py` mk 조인 → `archive_index.json` 재생성 — 커밋 `feat: archive_index에 시장 맥락 조인`
+- [x] 3.2 `build_archive_index.py` mk 조인 → `archive_index.json` 재생성 — 커밋 `feat: archive_index에 시장 맥락 조인`
   - 검증: mk 키 있는 records 수, 파일 크기 증가분(9.0MB 대비)
-- [ ] 3.3 `daily_collect.yml` 스텝·git add·충돌처리 추가 — 커밋 `ci: daily에 market tagging 추가`. 익일 06:00 KST 실행 로그 확인
+- [x] 3.3 `daily_collect.yml` 스텝·git add·충돌처리 추가 — 커밋 `ci: daily에 market tagging 추가`. 익일 06:00 KST 실행 로그 확인
 
 ### Phase 4 — 화면
 - [ ] 4.1 아카이브 카드 mk 칩 — 커밋 `feat(ui): 시장 맥락 칩`
