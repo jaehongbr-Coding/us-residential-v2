@@ -902,12 +902,12 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"];
 - [ ] 1.5 `monthly_market.yml` — 커밋 `ci: 월간 시장 데이터 수집 워크플로`
 
 ### Phase 2 — 판정 (geo 무관)
-- [ ] 2.0 **수집기 보정** (Phase 1 피드백): (a) `collect_bps` 종료월 `month-2`→`month-1` (b) `collect_soc` sha256 멱등 (c) `monthly_market.yml` cron 26→29일 — 커밋 `fix: 수집기 종료월·SOC 멱등·cron 조정`
-- [ ] 2.1 `market_context.py` + `tests/test_market_context.py` — 커밋 `feat: 시장 상태 계산 (순수)`
-- [ ] 2.2 **임계값 보정**: 전 CBSA 2026-08 기준 (a) units_avg3y 분포(분위수 10/25/50/75/90) → VOLUME_FLOOR 확정. 관심 7개 CBSA의 coverage 결과를 **기록**하되 **하한을 그들에 맞추지 않는다** (Columbia MO 271 → low_volume 예상, 그대로 둠) (b) ok인 CBSA의 ratio 분포 → 상·하위 20% 지점으로 THRESH 확정 → Plan v0.5 기록
+- [x] 2.0 **수집기 보정** (Phase 1 피드백): (a) `collect_bps` 종료월 `month-2`→`month-1` (b) `collect_soc` sha256 멱등 (c) `monthly_market.yml` cron 26→29일 — 커밋 `fix: 수집기 종료월·SOC 멱등·cron 조정`
+- [x] 2.1 `market_context.py` + `tests/test_market_context.py` — 커밋 `feat: 시장 상태 계산 (순수)`
+- [x] 2.2 **임계값 보정**: 전 CBSA 2026-08 기준 (a) units_avg3y 분포(분위수 10/25/50/75/90) → VOLUME_FLOOR 확정. 관심 7개 CBSA의 coverage 결과를 **기록**하되 **하한을 그들에 맞추지 않는다** (Columbia MO 271 → low_volume 예상, 그대로 둠) (b) ok인 CBSA의 ratio 분포 → 상·하위 20% 지점으로 THRESH 확정 → Plan v0.5 기록
   - 사전 실측 (2026-08, 48개월 창): ATL 0.913 / DFW 0.912 / LA 1.461 / SEA 1.330 / DEN 0.847 / PHX 0.875 / Columbia MO 1.080(avg3y 271)
-- [ ] 2.3 `market_rules.py` + `tests/test_market_rules.py` — 커밋 `feat: 시장 맥락 규칙 S1~S3`
-- [ ] 2.4 `market_tagger.py --mode context-only` → `context_latest.json`; `monthly_market.yml`에 스텝 추가 — 커밋 `feat: 시장 context 덤프`
+- [x] 2.3 `market_rules.py` + `tests/test_market_rules.py` — 커밋 `feat: 시장 맥락 규칙 S1~S3`
+- [x] 2.4 `market_tagger.py --mode context-only` → `context_latest.json`; `monthly_market.yml`에 스텝 추가 — 커밋 `feat: 시장 context 덤프`
   - 검증: 관심 7개 CBSA의 coverage·ratio·flags·lag_months·by_quarter 표
 
 ### Phase 3 — 기사 태깅 (**전제 충족됨**: geo_tags.db 10,249행 존재)
