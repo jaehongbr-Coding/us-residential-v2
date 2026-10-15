@@ -955,10 +955,41 @@ function passesArchiveFilters(r, skip) {
     if (archiveFilters.toDate && r.d > archiveFilters.toDate) return false;
   }
   if (skip !== "text" && archiveFilters.text) {
-    const hay = `${r.t} ${r.s}`.toLowerCase();
-    if (!hay.includes(archiveFilters.text)) return false;
+    const abbrevCode = archiveAbbrevCode(archiveFilters.text);
+    if (abbrevCode) {
+      // 약어 정확일치("la" → 31080): 부분문자열 검색 대신 CBSA 필터로 동작
+      if (!(r.cbsa || "").split("|").includes(abbrevCode)) return false;
+    } else if (!archiveSearchHay(r).includes(archiveFilters.text)) {
+      return false;
+    }
   }
   return true;
+}
+
+/* ── 아카이브 텍스트 검색: 제목·소스 + 지역(CBSA) 표시명 ──
+   지역명은 칩 렌더링과 같은 소스(archiveData.cbsa_titles + cbsaShort)를 쓴다. */
+function archiveAbbrevCode(text) {
+  // CBSA_SHORT(아래 시장 맥락 칩 블록) 역조회. 7개라 매번 찾아도 비용 없음
+  const t = (text || "").trim().toLowerCase();
+  const hit = Object.entries(CBSA_SHORT).find(([, s]) => s.toLowerCase() === t);
+  return hit ? hit[0] : null;
+}
+
+function archiveSearchHay(r) {
+  if (r._hay === undefined) {   // 레코드별 1회 생성 후 캐시 (칩 카운트 재계산마다 호출됨)
+    const titles = archiveData ? archiveData.cbsa_titles : {};
+    const regions = (r.cbsa || "").split("|").filter(Boolean)
+      .map(c => `${titles[c] || ""} ${cbsaShort(c, titles)}`).join(" ");
+    r._hay = `${r.t} ${r.s} ${regions}`.toLowerCase();
+  }
+  return r._hay;
+}
+
+function archiveTextLabel(text) {
+  const code = archiveAbbrevCode(text);
+  if (!code) return `"${text}"`;
+  const t = (archiveData && archiveData.cbsa_titles[code]) || code;
+  return `"${CBSA_SHORT[code]}" → ${t.split(",")[0].split("-")[0].trim()}`;
 }
 
 function hasAnyArchiveFilter() {
@@ -1062,7 +1093,7 @@ function renderArchive() {
   archiveFilters.ev.forEach(v => activeLabels.push(v));
   archiveFilters.rel.forEach(v => activeLabels.push(v));
   archiveFilters.cat.forEach(v => activeLabels.push(v));
-  if (archiveFilters.text) activeLabels.push(`"${archiveFilters.text}"`);
+  if (archiveFilters.text) activeLabels.push(archiveTextLabel(archiveFilters.text));
   const label = activeLabels.length ? activeLabels.join(" + ") + " — " : "";
   document.getElementById("archiveResultHeader").textContent =
     `${label}${filtered.length.toLocaleString()}건`;
