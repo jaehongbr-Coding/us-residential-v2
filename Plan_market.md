@@ -1,7 +1,7 @@
 # Plan_market.md — The Brief 시장 데이터 풀 + 시장 맥락 판정 구현 계획
 
-> 버전 v0.3 (2026-10-15) · 근거: `research_market.md` v0.1 + Phase 0 진단 + **Phase 1 실측** · 선행: `Plan.md` v0.3 (geo)
-> Phase 1 완료 (커밋 ed6344a..9e73b7b, 2026-10-15). v0.3는 실측 차이 반영 + Phase 2 착수 전 수정 2건(2.0).
+> 버전 v0.4 (2026-10-15) · 근거: `research_market.md` v0.1 + Phase 0·1 실측 + **2026-10-15 저장소 구조 조사** · 선행: `CLAUDE.md` (현 구조 정본)
+> ⚠️ v0.4 핵심: v0.1~v0.3이 가정한 `geo_tags.csv`·`articles.csv` 기사 우주가 **틀렸음**. 실제는 원장 `archive/*.csv` 10,249건 + 렌즈 SQLite 3개(`labels.db`·`geo_tags.db`·`seen_index.db`) + 조인 산출물 `archive_index.json`. geo는 **완료 상태**(7,099→10,249건 백필, Haiku). Phase 2·3·4를 실제 구조에 맞춰 재작성.
 > ⚠️ v0.2 핵심 변경: BPS 월간 파일에 보고분/대체추정 분리가 **없음**이 확인됨 → `rep_share` 기반 unknown 규칙을 **물량 하한(volume floor)** 으로 교체. 열 위치 고정 → 헤더명 탐색으로 교체. SOC 파서 확정.
 > §9 미해결 질문은 전부 기본안으로 확정 (Q1 3년 / Q2 70% / Q3 전수 / Q4 유지 / Q5 Phase 2 / Q6 별도 / Q7 별도 워크플로)
 > 구현 원칙: **단계별 독립 커밋, 각 단계 후 검증·보고 후 진행.** 이 문서 승인 전 구현 금지.
@@ -19,77 +19,82 @@
 | M4 | 규칙 입력은 `data/market/` 커밋 파일만. **런타임 네트워크 호출 금지** (수집은 전용 워크플로에서만) | I7 계승 |
 | M5 | 기사 건수(뉴스량)를 공급 판정 입력으로 쓰지 않는다 | 프록시 방향 불일치 |
 | M6 | 3년 평균 물량이 하한 미만이면 ratio를 산출하되 판정은 `unknown` (ratio는 노이즈) | 원칙 ② |
-| M7 | `articles.csv`, `classifier.py`, `collector.py`, `geo_*.py`를 수정하지 않는다 | 원장·렌즈 분리 |
+| M7 | `articles.csv`, `archive/`, `classifier.py`, `collector.py`, `geo_*.py`, `label_store.py`, `archive_manager.py`를 수정하지 않는다. **예외: `build_archive_index.py`는 market 조인 1곳만 추가** | 원장·렌즈 분리 |
+| M8 | market 렌즈는 저장소 관례(labels.db·geo_tags.db)를 따라 **SQLite 사이드카 `market_flags.db`** + `market_store.py`. `.gitattributes`에 `binary merge=ours` 선언 | 기존 충돌 복구 경로 재사용 |
 
 ---
 
-## 1. 아키텍처
+## 1. 아키텍처 (v0.4 — 실제 구조 기준)
 
 ```
-┌─ 수집 (월 1회, monthly_market.yml) ─────────────────────────────┐
-│  market_collect.py                                              │
-│    census.gov ─xls→ data/market/raw/cbsamonthly_YYYYMM.xls      │
-│               ─parse→ data/market/bps_cbsa.csv  (append-only)   │
-│    census.gov ─xlsx→ data/market/soc_lag.csv    (연 1회 갱신)    │
-└─────────────────────────────────────────────────────────────────┘
+┌─ 수집 (월 1회, monthly_market.yml) — Phase 1 완료 ─────────────────┐
+│  market_collect.py → data/market/raw/*.xls, bps_cbsa.csv(48,258행), │
+│                      soc_lag.csv(1,375행), bps_anomalies.csv        │
+└─────────────────────────────────────────────────────────────────────┘
                               │
-┌─ 판정 (일 1회, daily_collect.yml geo 스텝 뒤) ──────────────────┐
-│  market_tagger.py                                               │
-│    geo_tags.csv ──┐                                             │
-│                   ├─ market_context.py (순수 계산)               │
-│    bps_cbsa.csv ──┤        │                                    │
-│    soc_lag.csv ───┘        ▼                                    │
-│                    market_rules.py (규칙 ≤6)                     │
-│                            │                                    │
-│         ┌──────────────────┴──────────────────┐                 │
-│         ▼                                     ▼                 │
-│  market_flags.csv (기사별)        data/market/context_latest.json│
-│                                   (전 CBSA, 화면용)              │
-└─────────────────────────────────────────────────────────────────┘
+┌─ 판정 (일 1회, daily_collect.yml: geo 뒤·build_archive_index 앞) ───┐
+│  market_tagger.py                                                   │
+│    archive_manager.read_archive()  ─ article_id, published_at       │
+│    geo_store.get_geo()             ─ geo_cbsa_code|scope|confidence │
+│    data/market/{bps_cbsa,soc_lag,state_region}.csv                  │
+│         │                                                           │
+│         ├─ market_context.compute()  (순수)                         │
+│         └─ market_rules.judge()      (규칙 ≤6)                      │
+│                    │                                                │
+│         ┌──────────┴──────────────┐                                 │
+│         ▼                         ▼                                 │
+│  market_flags.db (렌즈, SQLite)   data/market/context_latest.json   │
+│  PK (article_id, cbsa_code, rule_version)                           │
+└─────────────────────────────────────────────────────────────────────┘
                               │
-┌─ 화면 (index.html, 정적) ───────────────────────────────────────┐
-│  기사 카드: "높음 · supply_drought"  (두 칩, 합산 없음)            │
-│  마켓워치 탭: 하드코딩 차트 → context_latest.json 실데이터        │
-└─────────────────────────────────────────────────────────────────┘
+┌─ 조인 (build_archive_index.py, 기존) ─────────────────────────────┐
+│  archive × labels.db × geo_tags.db × **market_flags.db**(추가)      │
+│  → archive_index.json  records[].mk = [[cbsa, flags, ratio, cov]]  │
+└─────────────────────────────────────────────────────────────────────┘
+                              │
+┌─ 화면 (index.html, 정적) ─────────────────────────────────────────┐
+│  아카이브 카드: rel 칩 옆에 mk 칩 ("높음" · "공급 감소 · ATL")       │
+│  마켓워치 섹션(신규): context_latest.json → Chart.js (재도입)        │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-**push와 pull이 같은 함수를 쓴다:** `market_context.compute(cbsa, as_of, bps, soc)`를 `market_tagger.py`가 기사별로 호출하고, 같은 실행의 끝에 전 CBSA에 대해 호출해 JSON으로 덤프한다. 화면은 계산하지 않고 읽기만 한다.
+**실측 전제 (2026-10-15 조사)**
+- 원장 `archive/2024-09.csv` ~ `2026-10.csv` 26파일 10,249행, article_id 중복 0. published_at 2024-09-11~2026-10-14, collected_at 2026-06-08~
+- `geo_tags.db` 10,249행. `geo_cbsa_code` 비어있지 않음 5,185행, 다중(`|`) 90행. confidence 6종: exact 2,338 / inferred 2,757 / source_inferred 90 / state 309 / ambiguous 239 / none 4,516. scope 6종: local 7,259 / metro 131 / national 419 / regional 120 / state 309 / none 2,011
+- 관심 7 CBSA 기사 수 (scope metro|local): ATL 126 / DFW 175 / LA 388 / SEA 163 / DEN 83 / PHX 166 / Columbia MO 20
+- `labels.db`가 `woomi_relevance` 정본 (낮음 6,627 / 보통 2,107 / 높음 1,515). articles.csv는 조인 뷰
+- `index.html`에 트렌드 차트·Chart.js 참조 **없음** (ac2afbb에서 삭제). 마켓워치는 신규 섹션
+- BPS 2019-11 시작 → 48개월 창은 as_of ≥ 2023-11. 원장 최초 기사 2024-09 → as_of 2024-07 → **전 기사 판정 가능**
 
----
+**push와 pull이 같은 함수:** `market_context.compute()`를 tagger가 기사별로 호출하고, 같은 실행 끝에 전 CBSA를 JSON으로 덤프. 화면은 읽기만.
 
 ## 2. 파일 변경 계획
 
 ### 2.1 신규
 
-| 경로 | 종류 | 역할 |
-|---|---|---|
-| `market_collect.py` | 실행 스크립트 | BPS/SOC 다운로드·파싱·append |
-| `market_context.py` | 모듈 (순수) | CBSA×시점 → 시장 상태 계산 |
-| `market_rules.py` | 모듈 (순수) | 시장 상태 → flag 목록 |
-| `market_tagger.py` | 실행 스크립트 | geo_tags × context → market_flags.csv + context_latest.json |
-| `data/market/raw/` | 디렉터리 | 원본 .xls/.xlsx 보관 (원장) |
-| `data/market/bps_cbsa.csv` | 데이터 | 파싱 결과 (원장, append-only) |
-| `data/market/bps_download_log.csv` | 데이터 | 파일명·받은 시각·행수·sha256 |
-| `data/market/bps_anomalies.csv` | 데이터 | 원본 이상값 기록 (월간>YTD 등). 원장 보조. **v0.3 추가** |
-| `data/market/soc_lag.csv` | 데이터 | 연×region×bucket 소요기간 |
-| `data/market/state_region.csv` | 데이터 | 주 → Census Region (정적 51행) |
-| `data/market/context_latest.json` | 데이터 | 전 CBSA 최신 context |
-| `market_flags.csv` | 데이터 (루트) | 렌즈. geo_tags.csv와 같은 위치 |
-| `tests/test_market_parse.py` | 테스트 | xls 열 위치 고정 |
-| `tests/test_market_context.py` | 테스트 | 기저선 산식 항등식 |
-| `tests/test_market_rules.py` | 테스트 | 규칙 경계값 |
-| `.github/workflows/diagnose_market.yml` | 워크플로 | Phase 0 일회성 (census.gov 접근 확인) |
-| `.github/workflows/monthly_market.yml` | 워크플로 | 월 1회 수집 |
+| 경로 | 종류 | 역할 | 상태 |
+|---|---|---|---|
+| `market_collect.py` | 실행 | BPS/SOC 수집 | **완료** (Phase 1) |
+| `data/market/raw/`, `bps_cbsa.csv`, `bps_download_log.csv`, `bps_anomalies.csv`, `soc_lag.csv`, `state_region.csv` | 데이터 | 원장 | **완료** |
+| `.github/workflows/monthly_market.yml` | 워크플로 | 월 1회 수집 | **완료** (tagger 스텝은 Phase 3) |
+| `market_context.py` | 모듈 (순수) | CBSA×시점 → 시장 상태 | Phase 2 |
+| `market_rules.py` | 모듈 (순수) | 상태 → flag 목록 | Phase 2 |
+| `market_store.py` | 모듈 | `market_flags.db` 접근. `geo_store.py` 패턴 복제 | Phase 3 |
+| `market_tagger.py` | 실행 | archive × geo × context → market_flags.db + context_latest.json | Phase 2(context) / 3(태깅) |
+| `market_flags.db` | 데이터 (루트) | 렌즈. SQLite 사이드카 | Phase 3 |
+| `data/market/context_latest.json` | 데이터 | 전 CBSA 최신 context (화면용) | Phase 2 |
+| `tests/test_market_context.py`, `tests/test_market_rules.py`, `tests/test_market_store.py` | 테스트 | | Phase 2·3 |
 
 ### 2.2 기존 수정 (최소)
 
-| 경로 | 변경 | 비고 |
+| 경로 | 변경 | Phase |
 |---|---|---|
-| `requirements.txt` | `xlrd>=2.0.1` 추가 | BPS .xls 구형 |
-| `daily_collect.yml` | geo 스텝 **뒤에** `python market_tagger.py` 스텝 추가 + `git add market_flags.csv data/market/context_latest.json` | Phase 3. geo 워크플로 스텝이 먼저 있어야 함 |
-| `index.html` | (a) 기사 카드에 시장 맥락 칩 (b) `renderTrendCharts()` 하드코딩 → JSON | Phase 4 |
-
----
+| `build_archive_index.py` | records에 `mk` 필드 추가 (`market_store.get_flags` 조인). `filters`에 `market_flags` 값 목록 추가 | 3 |
+| `daily_collect.yml` | `Geo tagging` 뒤·`Build archive index` 앞에 `Market tagging` 스텝. git add에 `market_flags.db data/market/context_latest.json` | 3 |
+| `monthly_market.yml` | soc 뒤에 `python market_tagger.py --mode context-only` 스텝 | 2 |
+| `.gitattributes` | `market_flags.db binary merge=ours` | 3 |
+| `index.html` | (a) 아카이브 카드에 mk 칩 (b) 마켓워치 섹션 신규 + Chart.js CDN 재도입 | 4 |
+| `CLAUDE.md` | 시장 데이터 풀 섹션 추가, 데이터 현황 표 갱신(10,249) | 5 |
 
 ## 3. 데이터 스키마
 
@@ -136,23 +141,30 @@
 - South: DE DC FL GA MD NC SC VA WV AL KY MS TN AR LA OK TX
 - West: AZ CO ID MT NV NM UT WY AK CA HI OR WA
 
-### 3.4 `market_flags.csv` (렌즈, 루트)
+### 3.4 `market_flags.db` (렌즈, 루트, SQLite) — v0.4
 
-| 컬럼 | 설명 |
-|---|---|
-| `article_id` | articles.csv 키 |
-| `cbsa_code` | geo_tags.csv의 `geo_cbsa_code`를 `\|`로 분리한 **각각** — 기사 1건이 CBSA 2개면 2행 |
-| `as_of` | `YYYY-MM`. 기사 `published_at` 기준 **직전 완결월** (BPS 공표 지연 반영) |
-| `coverage` | `ok` / `low_volume` / `no_data` / `not_applicable` |
-| `units_12m` | int 또는 빈값 |
-| `units_avg3y` | float 또는 빈값 |
-| `ratio_12m_vs_3y` | float 또는 빈값 |
-| `flags` | `\|` 구분. 빈값 가능. 예: `supply_drought` |
-| `rule_version` | `v1` |
-| `tagged_at` | ISO8601 |
+```sql
+CREATE TABLE IF NOT EXISTS market_flags (
+    article_id       TEXT NOT NULL,
+    cbsa_code        TEXT NOT NULL,      -- geo_cbsa_code를 '|'로 분리한 각각. 기사 1건이 CBSA 2개면 2행
+    rule_version     TEXT NOT NULL,
+    as_of            TEXT,               -- YYYY-MM. published_at − 2개월 (BPS 공표 지연)
+    coverage         TEXT,               -- ok | low_volume | no_data | not_applicable
+    units_12m        INTEGER,
+    units_avg3y      REAL,
+    ratio_12m_vs_3y  REAL,
+    flags            TEXT,               -- '|' 구분. 빈 문자열 가능
+    tagged_at        TEXT,
+    PRIMARY KEY (article_id, cbsa_code, rule_version)
+);
+CREATE INDEX IF NOT EXISTS idx_mf_cbsa  ON market_flags(cbsa_code);
+CREATE INDEX IF NOT EXISTS idx_mf_flags ON market_flags(flags);
+```
 
-- `geo_scope ∉ {metro, local}` → `coverage=not_applicable`, flags 빈값. 전국 기사가 Atlanta를 스치는 경우 차단 (geo research §5.4 계승)
-- `geo_cbsa_code` 빈값 → 행을 만들지 않는다
+- **적용 조건**: `geo_cbsa_code` 비어있지 않음 AND `geo_scope ∈ {metro, local}` AND `geo_confidence ∈ {exact, inferred, source_inferred}`. 그 외 CBSA가 있어도 `coverage=not_applicable`, flags 빈값으로 **행은 남긴다** (왜 판정 안 했는지 추적)
+- `geo_cbsa_code` 빈값 → 행 없음
+- 멱등 키에 `rule_version` 포함 → 규칙 상향 시 전 기사 자동 재태깅, 과거 행 보존 (M3)
+- `market_store.py` 함수: `open_market()`, `get_flags(conn, article_ids) -> {aid: [row…]}`, `upsert_flag(conn, row)`, `count_flags(conn)`, `tagged_keys(conn, rule_version) -> set[(aid, cbsa)]`
 
 ### 3.5 `data/market/context_latest.json`
 
@@ -169,13 +181,15 @@
       "units_12m": 9120, "units_avg3y": 14830, "ratio_12m_vs_3y": 0.615,
       "flags": ["supply_drought"],
       "monthly": [{"period":"2023-09","u5_units":1240}, "... 36개"],
+      "article_counts": {"total": 126, "flagged": 98},
       "expected_completion": {"lag_months": 17.5, "bucket": "20+", "by_quarter": {"2027Q4": 2310, "2028Q1": 1980, "2028Q2": 1750, "2028Q3": 2100}}
     }
   }
 }
 ```
 
-- 전 CBSA 포함 (Q3 전수). 약 900 × 36개월 ≈ 1.5MB. 화면은 관심 목록만 그린다
+- 전 CBSA 포함 (Q3 전수). 약 920 × 36개월 ≈ 1.5MB. 화면은 관심 목록만 그린다
+- `article_counts`는 market_flags.db 집계 (scope metro|local 기사 수 / coverage ok 수). Phase 3 전에는 생략
 - `expected_completion`은 **추정**. 화면에 "SOC 지역 평균 lag 적용, 미착공·취소 미반영" 고정 문구
 
 ---
@@ -540,111 +554,150 @@ def judge(ctx: MarketContext) -> list[str]:
 
 규칙 추가 절차(M2): 이 파일 상단 주석에 `# RULES: S1 S2 S3` 목록을 유지하고, 추가 시 `RULE_VERSION`을 올린다.
 
-### 4.4 `market_tagger.py`
+### 4.4 `market_store.py` + `market_tagger.py` — v0.4
 
 ```python
-"""geo_tags.csv × market_context → market_flags.csv + context_latest.json.
-daily_collect.yml에서 geo 스텝 뒤에 실행. 멱등: 이미 같은 rule_version으로 태깅된 행은 스킵."""
+# market_store.py — geo_store.py 패턴
+"""market_flags.db 접근. 렌즈 계층. 원장을 읽지 않는다."""
 from __future__ import annotations
-import json, sys
+import sqlite3
+from pathlib import Path
+DB = Path("market_flags.db")
+SCHEMA = """…§3.4 DDL…"""
+COLS = ["article_id","cbsa_code","rule_version","as_of","coverage","units_12m",
+        "units_avg3y","ratio_12m_vs_3y","flags","tagged_at"]
+
+def open_market() -> sqlite3.Connection:
+    c = sqlite3.connect(DB); c.executescript(SCHEMA); return c
+
+def tagged_keys(c, rule_version: str) -> set[tuple[str, str]]:
+    return set(c.execute("SELECT article_id, cbsa_code FROM market_flags WHERE rule_version=?", (rule_version,)))
+
+def upsert_flag(c, row: dict) -> None:
+    c.execute(f"INSERT OR REPLACE INTO market_flags ({','.join(COLS)}) VALUES ({','.join('?'*len(COLS))})",
+              [row.get(k) for k in COLS])
+
+def get_flags(c, article_ids: list[str], rule_version: str | None = None) -> dict[str, list[dict]]:
+    out = {}
+    for i in range(0, len(article_ids), 900):
+        chunk = article_ids[i:i+900]
+        q = f"SELECT {','.join(COLS)} FROM market_flags WHERE article_id IN ({','.join('?'*len(chunk))})"
+        args = list(chunk)
+        if rule_version: q += " AND rule_version=?"; args.append(rule_version)
+        for r in c.execute(q, args):
+            d = dict(zip(COLS, r)); out.setdefault(d["article_id"], []).append(d)
+    return out
+
+def count_flags(c) -> int:
+    return c.execute("SELECT COUNT(*) FROM market_flags").fetchone()[0]
+```
+
+```python
+# market_tagger.py
+"""archive × geo_tags.db × market_context → market_flags.db + context_latest.json
+daily_collect.yml: Geo tagging 뒤, Build archive index 앞.
+--mode incremental (기본): rule_version 기준 미태깅 (article_id, cbsa)만
+--mode context-only       : 기사 태깅 없이 JSON만 (monthly_market.yml, Phase 2)
+--mode backfill           : incremental과 동일 필터 (명시용)"""
+from __future__ import annotations
+import argparse, json
 from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
+from archive_manager import read_archive            # 기존. article_id, published_at 포함 행 반환
+from geo_store import open_geo, get_geo             # 기존
+from market_store import open_market, tagged_keys, upsert_flag, get_flags
 from market_context import compute, expected_completion, region_map, RULE_VERSION
 from market_rules import judge
 
-GEO      = Path("geo_tags.csv")
-ART      = Path("articles.csv")
-BPS      = Path("data/market/bps_cbsa.csv")
-SOC      = Path("data/market/soc_lag.csv")
-STREG    = Path("data/market/state_region.csv")
-OUT_CSV  = Path("market_flags.csv")
-OUT_JSON = Path("data/market/context_latest.json")
-FLAG_COLS = ["article_id","cbsa_code","as_of","coverage","units_12m",
-             "units_avg3y","ratio_12m_vs_3y","flags","rule_version","tagged_at"]
+BPS   = Path("data/market/bps_cbsa.csv"); SOC = Path("data/market/soc_lag.csv")
+STREG = Path("data/market/state_region.csv"); OUT_JSON = Path("data/market/context_latest.json")
 APPLICABLE_SCOPES = {"metro", "local"}
+APPLICABLE_CONF   = {"exact", "inferred", "source_inferred"}
 
 
 def as_of_for(published_at: str) -> str:
     dt = pd.to_datetime(published_at, errors="coerce", utc=True)
-    if pd.isna(dt): return ""
-    m = dt.to_period("M") - 2            # 직전 완결월 (§4.2 트레이드오프)
-    return str(m)
+    return "" if pd.isna(dt) else str(dt.to_period("M") - 2)
 
 
 def load():
     bps = pd.read_csv(BPS, dtype={"cbsa_code": str, "period": str})
     soc = pd.read_csv(SOC) if SOC.exists() else None
-    streg = pd.read_csv(STREG)
-    return bps, soc, streg
+    return bps, soc, pd.read_csv(STREG)
 
 
-def tag_articles(bps, soc, region_of) -> pd.DataFrame:
-    geo = pd.read_csv(GEO, dtype=str).fillna("")
-    art = pd.read_csv(ART, dtype=str, usecols=["article_id","published_at"]).fillna("")
-    g = geo.merge(art, on="article_id", how="inner")
-    done = set()
-    if OUT_CSV.exists():
-        prev = pd.read_csv(OUT_CSV, dtype=str).fillna("")
-        done = set(zip(prev.article_id, prev.cbsa_code, prev.rule_version))
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    rows = []
-    for r in g.itertuples(index=False):
-        if not r.geo_cbsa_code: continue
-        for cbsa in r.geo_cbsa_code.split("|"):
+def tag_articles(bps, soc, region_of) -> int:
+    rows = read_archive()                                     # list[dict] 또는 DataFrame — 기존 시그니처에 맞춘다
+    ids  = [r["article_id"] for r in rows]
+    pub  = {r["article_id"]: r["published_at"] for r in rows}
+    gconn = open_geo(); geo = get_geo(gconn, ids)
+    mconn = open_market(); done = tagged_keys(mconn, RULE_VERSION)
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds"); n = 0
+    for aid in ids:
+        g = geo.get(aid)
+        if not g or not g.get("geo_cbsa_code"): continue
+        for cbsa in g["geo_cbsa_code"].split("|"):
             cbsa = cbsa.strip()
-            if not cbsa or (r.article_id, cbsa, RULE_VERSION) in done: continue
-            as_of = as_of_for(r.published_at)
-            if r.geo_scope not in APPLICABLE_SCOPES or not as_of:
-                rows.append(dict(article_id=r.article_id, cbsa_code=cbsa, as_of=as_of,
-                                 coverage="not_applicable", units_12m="",
-                                 units_avg3y="", ratio_12m_vs_3y="", flags="",
-                                 rule_version=RULE_VERSION, tagged_at=now))
-                continue
+            if not cbsa or (aid, cbsa) in done: continue
+            as_of = as_of_for(pub[aid])
+            base = dict(article_id=aid, cbsa_code=cbsa, rule_version=RULE_VERSION, as_of=as_of, tagged_at=now)
+            if (g.get("geo_scope") not in APPLICABLE_SCOPES or g.get("geo_confidence") not in APPLICABLE_CONF or not as_of):
+                upsert_flag(mconn, {**base, "coverage": "not_applicable", "flags": ""}); n += 1; continue
             c = compute(cbsa, as_of, bps, soc, region_of)
-            rows.append(dict(article_id=r.article_id, cbsa_code=cbsa, as_of=as_of,
-                             coverage=c.coverage,
-                             units_12m=c.units_12m or "", units_avg3y=c.units_avg3y or "",
-                             ratio_12m_vs_3y=c.ratio_12m_vs_3y or "",
-                             flags="|".join(judge(c)), rule_version=RULE_VERSION, tagged_at=now))
-    new = pd.DataFrame(rows, columns=FLAG_COLS)
-    new.to_csv(OUT_CSV, mode="a" if OUT_CSV.exists() else "w",
-               header=not OUT_CSV.exists(), index=False)
-    return new
+            upsert_flag(mconn, {**base, "coverage": c.coverage, "units_12m": c.units_12m,
+                                "units_avg3y": c.units_avg3y, "ratio_12m_vs_3y": c.ratio_12m_vs_3y,
+                                "flags": "|".join(judge(c))}); n += 1
+    mconn.commit(); return n
 
 
-def dump_context(bps, soc, region_of) -> None:
+def dump_context(bps, soc, region_of, with_counts: bool) -> None:
     as_of = str(pd.to_datetime(bps.period).max().to_period("M"))
-    names = bps.drop_duplicates("cbsa_code").set_index("cbsa_code").cbsa_name.to_dict()
+    names = bps.drop_duplicates("cbsa_code", keep="last").set_index("cbsa_code").cbsa_name.to_dict()
+    counts = {}
+    if with_counts:
+        mconn = open_market()
+        for code, total, ok in mconn.execute(
+            "SELECT cbsa_code, COUNT(*), SUM(coverage='ok') FROM market_flags WHERE rule_version=? AND coverage!='not_applicable' GROUP BY cbsa_code", (RULE_VERSION,)):
+            counts[code] = {"total": total, "flagged": ok}
     out = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
            "as_of": as_of, "rule_version": RULE_VERSION, "cbsa": {}}
     for code in sorted(names):
         c = compute(code, as_of, bps, soc, region_of)
-        m = (bps[bps.cbsa_code == code].sort_values("period").tail(36)
-             [["period","u5_units"]].to_dict("records"))
-        out["cbsa"][code] = {**c.to_dict(), "name": names[code], "flags": judge(c),
-                             "monthly": m,
+        m = bps[bps.cbsa_code == code].sort_values("period").tail(36)[["period","u5_units"]].to_dict("records")
+        out["cbsa"][code] = {**c.to_dict(), "name": names[code], "flags": judge(c), "monthly": m,
+                             "article_counts": counts.get(code),
                              "expected_completion": {"lag_months": c.lag_months, "bucket": "20+",
                                                      "by_quarter": expected_completion(code, bps, c.lag_months)}}
     OUT_JSON.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
 
 
 if __name__ == "__main__":
-    bps, soc, streg = load()
-    region_of = region_map(bps, streg)
-    if GEO.exists():
-        n = tag_articles(bps, soc, region_of)
-        print(f"market_flags +{len(n)}행")
-    else:
-        print("geo_tags.csv 없음 — 기사 태깅 스킵, context만 생성")
-    dump_context(bps, soc, region_of)
-    print(f"context_latest.json 생성 ({OUT_JSON.stat().st_size//1024}KB)")
+    ap = argparse.ArgumentParser(); ap.add_argument("--mode", default="incremental",
+        choices=["incremental", "backfill", "context-only"]); a = ap.parse_args()
+    bps, soc, streg = load(); region_of = region_map(bps, streg)
+    if a.mode != "context-only":
+        print(f"market_flags +{tag_articles(bps, soc, region_of)}행")
+    dump_context(bps, soc, region_of, with_counts=(a.mode != "context-only"))
+    print(f"context_latest.json {OUT_JSON.stat().st_size//1024}KB")
 ```
 
-**트레이드오프**
-- geo_tags.csv 없을 때 스킵하고 context만 만든다 → **geo 전에 Phase 1~2·4를 끝낼 수 있다** (research §7)
-- 멱등 키에 `rule_version` 포함: 규칙을 올리면 전 기사가 자동 재태깅. 과거 행은 남는다 (M3)
-- 기사당 CBSA 다중 행: 집계 쉬움. 화면은 article_id로 묶어 칩 여러 개
+**`build_archive_index.py` 수정 (1곳)**
+```python
+# 기존: labels = get_labels(...); geo = get_geo(...)
+from market_store import open_market, get_flags
+mk = get_flags(open_market(), ids, rule_version=RULE_VERSION)   # RULE_VERSION은 market_context에서 import
+# records 생성 시:
+#   rows = [r for r in mk.get(aid, []) if r["coverage"] != "not_applicable"]
+#   if rows: rec["mk"] = [[r["cbsa_code"], r["flags"], r["ratio_12m_vs_3y"], r["coverage"]] for r in rows]
+# filters["market_flags"] = sorted({f for rs in mk.values() for r in rs for f in r["flags"].split("|") if f})
+```
+`mk`는 not_applicable 행을 제외하고, 없으면 키 자체를 생략한다 (9MB 파일 크기 관리).
+
+**트레이드오프 (v0.4)**
+- SQLite vs CSV: 저장소에 이미 labels.db·geo_tags.db 패턴(store 모듈, binary merge=ours, 행 수 감소 감지)이 있다. 같은 패턴을 따르면 충돌 복구·조인 코드를 재사용한다. CSV의 diff 가독성은 `context_latest.json`과 `bps_anomalies.csv`가 대신한다
+- 기사 우주 = archive 10,249 (작업본 5,944가 아님): 렌즈는 원장 전체를 덮어야 archive_index.json과 일치한다. 2024-09 기사도 BPS 48개월 창을 충족
+- confidence 필터에 `state`·`ambiguous` 제외: state는 CBSA 없음, ambiguous는 동명 미해소. 둘 다 판정하면 추정이 된다 (I8·M6)
 
 ### 4.5 `tests/`
 
@@ -731,17 +784,23 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/market/ market_flags.csv
+          git add data/market/
           git diff --cached --quiet && echo "변경 없음" || (git commit -m "auto: market data $(date +%Y-%m)" && git pull --rebase origin main && git push)
 ```
 - `daily_collect`(21:00 UTC)·`weekly_report`(일 23:00 UTC)와 시각이 겹치지 않는다 (A1 교훈)
 
-**`daily_collect.yml` 수정** (Phase 3 — geo 스텝이 들어간 뒤)
+**`daily_collect.yml` 수정** (Phase 3) — 현재 스텝 순서: … 7 classifier → 8 `geo_tagger.py --mode incremental` → 9 `build_archive_index.py` → 10 요약 → 11 배치취소 → 12 commit
 ```yaml
+      # 8과 9 사이에 삽입 (가드 조건 if: steps.guard.outputs.skip == 'false' 동일 적용)
       - name: Market tagging
-        run: python market_tagger.py
-      # Commit 스텝의 git add에 추가: market_flags.csv data/market/context_latest.json
+        if: steps.guard.outputs.skip == 'false'
+        run: python market_tagger.py --mode incremental
+      # 12 commit 의 git add 에 추가: market_flags.db data/market/context_latest.json
+      # 충돌 처리 블록에서 labels/geo DB와 같은 "행 수 감소 감지"를 market_flags.db에도 적용
 ```
+`.gitattributes`: `market_flags.db binary merge=ours`
+
+**`monthly_market.yml` 수정** (Phase 2): soc 뒤에 `python market_tagger.py --mode context-only`, git add에 `data/market/` 포함(이미 포함)
 
 ### 4.7 `diagnose_market.py` (Phase 0)
 
@@ -770,31 +829,34 @@ for u in U:
 ```
 → 출력으로 열 위치(COL)·SOC 파서를 확정하고 Plan v0.2에 반영한 뒤 Phase 1 착수.
 
-### 4.8 `index.html` (Phase 4)
+### 4.8 `index.html` (Phase 4) — v0.4
 
-**(a) 기사 카드 칩** — 기존 `woomi_relevance` 칩 **옆에** 추가. 합산 없음 (M1)
+현재 index.html은 `articles.csv`, `archive_index.json`, `reports/`, `manifest.json`을 읽는다. Chart.js 참조 없음.
+
+**(a) 아카이브 카드 칩** — `archive_index.json` records의 `rel` 칩 **옆에** `mk` 칩. 합산 없음 (M1)
 ```javascript
-const FLAGS_URL = "https://raw.githubusercontent.com/jaehongbr-Coding/us-residential-v2/main/market_flags.csv";
-const FLAG_LABEL = { supply_surge:"공급 급증", supply_drought:"공급 감소", unknown:"시장맥락 판정불가" };
-// Papa.parse(FLAGS_URL) → byArticle: Map<article_id, [{cbsa_code, flags, ratio_12m_vs_3y, coverage}]>
-// 카드 렌더 시:
-//   <span class="chip chip-rel">높음</span>
-//   <span class="chip chip-mkt" title="BPS 5+유닛 12m 9,120 / 3y평균 14,830 = 0.62">공급 감소 · ATL</span>
-// coverage=not_applicable 이면 칩 생략. unknown 이면 회색 칩 "판정불가(물량 부족)"
+const FLAG_LABEL = { supply_surge:"공급 급증", supply_drought:"공급 감소", unknown:"판정불가(물량 부족)" };
+const CBSA_SHORT = { "12060":"ATL","19100":"DFW","31080":"LA","42660":"SEA","19740":"DEN","38060":"PHX","17860":"COMO" };
+// rec.mk = [[cbsa, flags, ratio, cov], …]  (없으면 undefined → 칩 없음)
+// 각 행마다: flags가 비면 "평년 수준" 회색 칩, unknown이면 회색, surge/drought는 각각 색 칩
+//   <span class="chip chip-mkt" title="BPS 5+유닛 12m / 3y평균 = 0.62 (as_of 2026-06)">공급 감소 · ATL</span>
+// cbsa_titles(archive_index.json 최상위)에서 긴 이름을 title에 넣는다
 ```
 
-**(b) 마켓워치** — `renderTrendCharts()`의 하드코딩 3개 차트 중 **차트 1·2는 유지**(뉴스 통계, 별건), **차트 3 자리에** 시장 차트를 넣고 섹션 제목을 "마켓워치"로
+**(b) 마켓워치 섹션 (신규)** — 아카이브 섹션 아래 또는 별도 탭. `context_latest.json` 로드.
 ```javascript
-const CTX_URL = ".../data/market/context_latest.json";
-const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL DFW LA SEA DEN PHX Columbia MO
-// 셀렉트 박스로 CBSA 선택 → monthly 36개월 bar(u5_units) + 12개월 이동합 line
-// 상단 요약: ratio_12m_vs_3y, coverage, flags, expected_completion.by_quarter
-// 고정 문구: "준공 예상은 SOC 지역 평균 lag(bucket 20+) 적용 추정치. 미착공·취소 미반영."
-// 색: #1B3A5C(월간) #2E75B6(12m 이동합) — 기존 팔레트
+// Chart.js 재도입: <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js">
+const CTX_URL = `${REPO_RAW}/data/market/context_latest.json`;
+const WATCH = ["12060","19100","31080","42660","19740","38060","17860"];
+// 상단: as_of, rule_version
+// CBSA 셀렉트(WATCH 기본, 전체 검색 가능) →
+//   요약 타일: ratio_12m_vs_3y · coverage · flags · units_12m · units_avg3y · article_counts
+//   차트: monthly 36개월 bar(u5_units, #1B3A5C) + 12개월 이동합 line(#2E75B6)
+//   준공 예상 표: expected_completion.by_quarter 4개
+//   고정 문구: "준공 예상은 SOC {region} 평균 lag {lag_months}개월(20+유닛) 적용 추정치. 미착공·취소 미반영."
+//   low_volume이면 차트는 그리되 타일에 "판정 불가 — 3년 평균 {units_avg3y}유닛/년 < 하한"
 ```
-- I6(geo 필터 UI 미노출) 유지: 기사 목록에 CBSA 필터를 넣지 않는다. 칩 표시만
-
----
+- I6(geo 필터 UI 미노출) 유지: 아카이브 필터에 CBSA·flag 필터를 **추가하지 않는다**. 칩 표시만. (`filters.market_flags`는 데이터에 두되 UI 필터는 Phase 5 이후 별도 결정)
 
 ## 5. 트레이드오프 총괄
 
@@ -817,7 +879,7 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 ## 6. 롤백
 
 - Phase 1~2: `data/market/`·신규 .py·tests 삭제, requirements에서 xlrd 제거. 기존 기능 영향 0
-- Phase 3: `daily_collect.yml`에서 스텝 제거, `market_flags.csv` 삭제. geo_tags.csv 무관
+- Phase 3: `daily_collect.yml`에서 스텝 제거, `market_flags.db`·`market_store.py` 삭제, `build_archive_index.py`의 mk 조인 revert. geo_tags.db·labels.db 무관
 - Phase 4: `index.html` 해당 커밋 revert. 칩·차트만 사라짐
 - 모든 단계가 **독립 커밋**이므로 `git revert <sha>` 단위로 되돌린다
 
@@ -842,26 +904,29 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 ### Phase 2 — 판정 (geo 무관)
 - [ ] 2.0 **수집기 보정** (Phase 1 피드백): (a) `collect_bps` 종료월 `month-2`→`month-1` (b) `collect_soc` sha256 멱등 (c) `monthly_market.yml` cron 26→29일 — 커밋 `fix: 수집기 종료월·SOC 멱등·cron 조정`
 - [ ] 2.1 `market_context.py` + `tests/test_market_context.py` — 커밋 `feat: 시장 상태 계산 (순수)`
-- [ ] 2.2 **임계값 보정**: 전 CBSA 2026-08 기준 (a) units_avg3y 분포(분위수 10/25/50/75/90) → VOLUME_FLOOR 확정. 관심 7개 CBSA의 coverage 결과를 **기록**하되 **하한을 그들에 맞추지 않는다** (Columbia MO 271 → low_volume 예상, 그대로 둠) (b) ok인 CBSA의 ratio 분포 → 상·하위 20% 지점으로 THRESH 확정 → Plan v0.4 기록
+- [ ] 2.2 **임계값 보정**: 전 CBSA 2026-08 기준 (a) units_avg3y 분포(분위수 10/25/50/75/90) → VOLUME_FLOOR 확정. 관심 7개 CBSA의 coverage 결과를 **기록**하되 **하한을 그들에 맞추지 않는다** (Columbia MO 271 → low_volume 예상, 그대로 둠) (b) ok인 CBSA의 ratio 분포 → 상·하위 20% 지점으로 THRESH 확정 → Plan v0.5 기록
   - 사전 실측 (2026-08, 48개월 창): ATL 0.913 / DFW 0.912 / LA 1.461 / SEA 1.330 / DEN 0.847 / PHX 0.875 / Columbia MO 1.080(avg3y 271)
 - [ ] 2.3 `market_rules.py` + `tests/test_market_rules.py` — 커밋 `feat: 시장 맥락 규칙 S1~S3`
-- [ ] 2.4 `market_tagger.py` (geo 없을 때 context만) → `context_latest.json` — 커밋 `feat: 시장 context 덤프`
-  - 검증: 관심 7개 CBSA의 coverage·ratio·flags를 표로 보고
+- [ ] 2.4 `market_tagger.py --mode context-only` → `context_latest.json`; `monthly_market.yml`에 스텝 추가 — 커밋 `feat: 시장 context 덤프`
+  - 검증: 관심 7개 CBSA의 coverage·ratio·flags·lag_months·by_quarter 표
 
-### Phase 3 — 기사 태깅 (**geo_tags.csv 존재 후**)
-- [ ] 3.1 geo 백필 완료 확인
-- [ ] 3.2 `python market_tagger.py` → `market_flags.csv` 소급 생성 — 커밋 `data: market_flags 백필`
-  - 검증: 행수, coverage 분포, flags 분포, `woomi_relevance`×flags 교차표 보고
-- [ ] 3.3 `daily_collect.yml`에 스텝 추가 — 커밋 `ci: daily에 market tagging 추가`
+### Phase 3 — 기사 태깅 (**전제 충족됨**: geo_tags.db 10,249행 존재)
+- [ ] 3.0 `market_store.py` + `tests/test_market_store.py` + `.gitattributes` — 커밋 `feat: market_flags.db 렌즈 스토어`
+- [ ] 3.1 `market_tagger.py --mode incremental` 로컬 1회 실행 = 원장 10,249건 소급 — 커밋 `data: market_flags 백필`
+  - 검증: 행수(≈5,185 + 다중 90), coverage 분포, flags 분포, 관심 7 CBSA별 coverage 분포, `woomi_relevance`(labels.db) × flags 교차표
+- [ ] 3.2 `build_archive_index.py` mk 조인 → `archive_index.json` 재생성 — 커밋 `feat: archive_index에 시장 맥락 조인`
+  - 검증: mk 키 있는 records 수, 파일 크기 증가분(9.0MB 대비)
+- [ ] 3.3 `daily_collect.yml` 스텝·git add·충돌처리 추가 — 커밋 `ci: daily에 market tagging 추가`. 익일 06:00 KST 실행 로그 확인
 
 ### Phase 4 — 화면
-- [ ] 4.1 마켓워치 차트 (context_latest.json) — 커밋 `feat(ui): 마켓워치 BPS 차트`
-- [ ] 4.2 기사 카드 시장 맥락 칩 — 커밋 `feat(ui): 시장 맥락 칩`
+- [ ] 4.1 아카이브 카드 mk 칩 — 커밋 `feat(ui): 시장 맥락 칩`
+- [ ] 4.2 마켓워치 섹션 신규 + Chart.js 재도입 — 커밋 `feat(ui): 마켓워치`
 - [ ] 4.3 스크린샷 → 공모전 증빙 6번용 보관
 
 ### Phase 5 — 정리
 - [ ] 5.1 research_market.md 정정 3건: §4.1.3 보고분 열 부재→물량 하한 / §4.2.5 "South가 짧다"는 2+ 전체(17.5 vs West 20.6)에서만 성립하고 **20+ 구간은 South 21.8 ≈ West 22.6**, 최단은 Midwest 17.6 / §9 결정·실측 임계값
-- [ ] 5.2 공모전 Before/After 지표 1행 작성: "공급 판정 근거: 기사 건수 → BPS 5+유닛 허가 12m합 / 3y평균, 보고율 표기"
+- [ ] 5.2 `CLAUDE.md` 갱신: 시장 데이터 풀 섹션, 데이터 현황 표(10,249), 일일 파이프라인 5단계(collect→classify→geo→**market**→index), docs/history 이동 반영
+- [ ] 5.3 공모전 Before/After 지표 1행 작성: "공급 판정 근거: 기사 건수 → BPS 5+유닛 허가 12m합 / 3y평균, 보고율 표기"
 
 ---
 
@@ -871,7 +936,9 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 |---|---|---|
 | C1 | 관심 CBSA 7개 목록(§4.8) 적정한가 — Houston(26420)·Charlotte(16740) 추가? | 7개 유지, 필요 시 상수 1줄 |
 | C2 | 기사 카드 칩 문구: "공급 감소" vs "supply_drought" 원문 | 한글 라벨 + title 속성에 수치 |
-| C3 | Phase 3을 geo보다 먼저 할 방법은 없다 — geo 착수 시점 확인 | — |
+| C3 | ~~geo 착수 시점~~ 전제 충족 (geo 완료) | — |
+| C7 | `read_archive()` 실제 반환 타입(list[dict] vs DataFrame) — 3.1 착수 시 코드 확인 후 tagger 맞춤 | Phase 3 |
+| C8 | A6 후속(`_judge_access_limited` 본문→summary 덮어쓰기)은 이 Plan 범위 밖. 별도 결정 | — |
 | C4 | ~~SOC 파서~~ 확정됨 | — |
 | C5 | `metro_micro` 코드 의미(Atlanta=2, Aberdeen SD=5)를 Census 문서로 확인 — 2=Metro, 5=Micro 추정 [추정]. 화면 필터에 쓰기 전 확인 | Phase 4 전 확인 |
 | C6 | 2019-11~2021-12 파일의 `Monthly Coverage Percent*` 열 재파싱 여부 — 백필 구간 기저선 신뢰도 참고용. 현재 판정에는 미사용 | Phase 5 검토, 기본 보류 |
@@ -883,5 +950,6 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 | 버전 | 일자 | 변경 |
 |---|---|---|
 | v0.1 | 2026-10-15 | 최초 작성. research_market §9 기본안 전부 채택. geo Plan.md I1~I8 계승 + M1~M7 추가 |
+| v0.4 | 2026-10-15 | **저장소 구조 조사 반영.** ① geo는 완료(geo_tags.db 10,249행) — Phase 3 전제 충족 ② 기사 우주를 articles.csv→archive/ 원장으로 ③ 렌즈 저장을 csv→`market_flags.db`(M8) + `market_store.py` ④ 조인은 `build_archive_index.py`(mk 필드) ⑤ 적용 조건에 confidence 필터 추가 ⑥ index.html 트렌드 차트 부재 확인 → 마켓워치 신규 섹션 + Chart.js 재도입 ⑦ daily 스텝 위치 geo 뒤·index 앞 ⑧ C3 해소, C7·C8 추가 |
 | v0.3 | 2026-10-15 | Phase 1 완료 반영. ① 시트명 연도별 차이(`_pick_sheet`) ② 행수 실측 368/384/921 ③ 이상값 정책 확정(1% 임계, `bps_anomalies.csv`) ④ Columbia MO avg3y 271 → `low_volume` 유지 결정, 2.2 문구를 "맞추지 않는다"로 수정 ⑤ SOC 20+ 지역 격차 실측(NE 25.7 / MW 17.6 / S 21.8 / W 22.6 / US 21.7) — research §4.2.5 Sun Belt 논거 정정 필요 ⑥ Phase 2.0 추가(종료월 month-1, SOC sha256 멱등, cron 29일) ⑦ C6 추가 |
 | v0.2 | 2026-10-15 | Phase 0 진단 반영. ① 4 URL 200 → 자동 수집 확정 ② BPS 월간 파일에 보고분(rep)·MONCOV 없음 → `rep_share`/`imputed` 폐기, `VOLUME_FLOOR`/`low_volume`로 교체 (M6 수정) ③ 2024+ 파일 `Metro /Micro Code` 열 삽입으로 열 위치 밀림 → 헤더명 탐색 ④ 2023 이전 Metro만 393행, 2024+ Metro+Micro 929행 ⑤ SOC 파서 확정(행4~5 2단 헤더, 열5~9, 검증값 South 2025 2+ 17.5 / 20+ 21.8) ⑥ 실측값 Atlanta 2026-08 u5=875/YTD 8,361, 2023-12 u5=440/YTD 14,227 |
