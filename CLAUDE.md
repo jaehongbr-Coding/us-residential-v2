@@ -156,8 +156,32 @@ articles.csv 직접 분석)는 이제 90일보다 먼 데이터를 가져올 수
 - seen_index.db: 중복 체크 인덱스, articles.csv/archive에서 파생되는 캐시
 - labels.db: 렌즈 산출물(분류 8필드) 저장소, articles.csv/archive에서 파생되되
   이제 이쪽이 분류 결과의 유일한 source of truth. article_id PRIMARY KEY
+- geo_tagger.py / geo_resolver.py / geo_norm.py / geo_store.py → geo_tags.db:
+  geo 렌즈 (Stage A Haiku 추출 + 결정론적 CBSA 리졸버). 아래 "geo Phase 2 완료" 절
+- build_archive_index.py → archive_index.json: 원장 + labels.db + geo_tags.db +
+  market_flags.db 읽기 전용 조인. index.html 아카이브 탭이 읽는다
+- market_collect.py / market_context.py / market_rules.py / market_store.py /
+  market_tagger.py → data/market/, market_flags.db: 시장 데이터 풀. 아래 "시장 데이터 풀" 절
+- docs/history/: 구현과 달라진 초안 문서 보관. geo 초안(Plan_geo_v0.3_20260824.md,
+  research_geo_v0.3_20260824.md)은 2026-10-15 루트에서 이동 — geo 구현 정본은 이 파일
+- docs/DEVLOG.md: 개발 일지
 
-## 데이터 현황 (2026.08.24 실측)
+## 데이터 현황 (2026.10.15 실측)
+
+| 항목 | 값 |
+|---|---|
+| 원장(archive/) | 10,249행, 파티션 26개(2024-09 ~ 2026-10), article_id 중복 0 |
+| published_at 범위 | 2024-09-11 ~ 2026-10-14 (2024-09~ 는 Player 730일 수집 창) |
+| collected_at 범위 | 2026-06-08 ~ 2026-10-14 |
+| articles.csv(작업본) | 9,265행 (90일 + Player) |
+| labels.db | 10,249행 (낮음 6,627 / 보통 2,107 / 높음 1,515) |
+| geo_tags.db | 10,249행 (CBSA 있음 5,185, 다중 CBSA 90) |
+| market_flags.db | 5,290행 (rule v1: ok 3,995 / low_volume 824 / no_data 148 / not_applicable 323) |
+| archive_index.json | 9.2MB, records 10,249 (mk 4,907) |
+
+아래 2026.08.24 실측 표는 당시 기록으로 남긴다 (관측창 불균질 논의의 근거).
+
+### 2026.08.24 실측 (기록)
 
 | 항목 | 값 |
 |---|---|
@@ -426,6 +450,60 @@ Stage B만 재실행")가 실전에서 정확히 의도대로 작동했다.
 (Batch API custom_id 중복으로 백필 1차 시도가 아예 거부됨, geo_tagger.py에서
 방어 코드로 우회). 세 번째 사고이므로 정리 우선순위를 올릴 것.
 
+(위 절의 "Plan.md"는 현재 `docs/history/Plan_geo_v0.3_20260824.md`.)
+
+## 일일 파이프라인 (daily_collect.yml, 2026.10 기준)
+
+중복 실행 가드 → collect(collector.py) → classify(classifier.py, Batch API) →
+geo(geo_tagger.py --mode incremental, Haiku) → **market(market_tagger.py --mode incremental)** →
+index(build_archive_index.py) → commit.
+
+market 스텝은 **API 호출이 없다(비용 0)**. geo_tags.db의 CBSA × data/market/ BPS 시계열로
+아직 태깅 안 된 (article_id, cbsa) 쌍만 순수 계산해 market_flags.db에 쓰고,
+context_latest.json을 다시 덤프한다(로컬 백필 5,290행 35.6초). commit 스텝은
+market_flags.db·data/market/context_latest.json도 add하며, 병합 충돌 시
+labels.db·geo_tags.db와 같은 방식으로 ours 해소 + 행 수 감소 감지(감소 시 exit 1)를
+적용한다. market_flags.db는 순수 계산 렌즈라 `market_tagger.py` 재실행으로 복구 가능하다.
+
+## 시장 데이터 풀 (2026.10 — Phase 0~4 완료)
+
+문서: `research_market.md`(리서치, §12 실측 정정) / `Plan_market.md`(구현 계획, v0.5가
+코드와 동기화된 정본). 3계층 원칙을 공공 데이터에 그대로 적용했다.
+
+**원장 — `data/market/`.** Census BPS 월간 CBSA 허가 파일(.xls 82개, 2019-11~)과 SOC
+허가→착공·착공→준공 소요기간(.xlsx 2개)을 `raw/`에 원본 그대로 보관하고, 파싱 결과를
+`bps_cbsa.csv`(48,258행, append-only, (period, cbsa_code) UNIQUE)와 `soc_lag.csv`에 둔다.
+원본 이상값(월간 > YTD)은 고치지 않고 `bps_anomalies.csv`에 기록한다(1% 초과면 파서
+오류로 raise). 수집은 `market_collect.py`, `monthly_market.yml`(매월 29일 02:00 UTC +
+수동)에서만 — 런타임 네트워크 호출 금지(M4). SOC는 sha256 동일 시 재기록하지 않는다.
+
+**렌즈 — `market_flags.db`.** `market_context.compute()`가 CBSA × as_of(발행월 − 2개월)의
+12개월 5+유닛 허가 합 / 직전 36개월 연평균(ratio)을 계산하고, `market_rules.judge()`가
+규칙 3개로 판정한다: **S1 supply_surge(ratio ≥ 1.25) / S2 supply_drought(≤ 0.75) /
+S3 unknown(3년 평균 < VOLUME_FLOOR 1,000 또는 48개월 미달)**. 임계는 2026-10-15 전 CBSA
+실측 분포로 확정(research_market §12.4). 적용 조건은 geo_scope ∈ {metro, local} AND
+geo_confidence ∈ {exact, inferred, source_inferred} — 그 외는 not_applicable 행으로 남긴다.
+PK (article_id, cbsa_code, rule_version).
+
+**조인 — archive_index.json `records[].mk`.** `[[cbsa, flags, ratio, coverage], …]`,
+not_applicable 제외, 없으면 키 생략. `filters.market_flags`에 등장 flag 목록.
+`woomi_relevance`와 **합산하지 않는다** — 교차표상 두 축은 독립이다(research_market §12.5).
+
+**화면 — index.html.** 아카이브 표 제목 셀 아래 `mk-chip`(평년/공급 급증/공급 감소/
+판정불가 · 약칭), 세 번째 페이지 탭 `📈 마켓워치`(context_latest.json lazy fetch,
+CBSA 921개 선택, 타일 4개·36개월 차트·준공 예상 4분기). service-worker.js는
+context_latest.json을 Network First로 받는다. 아카이브 필터에 CBSA·flag 필터는 넣지 않는다(I6).
+
+**불변조건 요약 (Plan_market §0)**: M1 relevance+flag 합산 점수 금지 / M2 규칙 6개 상한 /
+M3 모든 판정 행에 rule_version / M4 규칙 입력은 data/market/ 커밋 파일만 /
+M5 기사 건수를 공급 판정에 쓰지 않음 / M6 물량 하한 미만은 unknown /
+M7 articles.csv·classifier.py·collector.py·geo_*.py 수정 금지 / M8 렌즈는 SQLite 사이드카
++ store 모듈, .gitattributes binary merge=ours.
+
+**수정 원칙**: 원장 `data/market/raw/`·`bps_cbsa.csv`는 불변(append-only). 렌즈를 바꾸려면
+`market_rules.py`/`market_context.py`의 규칙·임계를 바꾸고 `RULE_VERSION`을 올린다 —
+기존 행은 보존되고 새 버전으로 자동 재태깅된다. market_flags.db를 손으로 고치지 않는다.
+
 ## articles.csv 컬럼 (16개 확정)
 article_id, collected_at, published_at, source, title,
 url, summary, classified, category, event_tags,
@@ -520,6 +598,10 @@ woomi_relevance: CSV 저장만, UI 미노출
 - 📈 시장 트렌드 분석 섹션 추가 (차트 3개: 월별 카테고리/높음비율/GP언급 빈도)
 - Service Worker 캐시 버전 v1→v2 (모바일 캐시 강제 갱신)
 - Chart.js CDN jsdelivr로 교체 + window.load 렌더링 타이밍 보정
+- (2026.09) 인텔리전스 탭 제거, 리포트를 뉴스 탭으로 이동, 📈 시장 트렌드 분석 하드코딩
+  차트 3개 삭제 (커밋 ac2afbb). 위 "시장 트렌드 분석 섹션 추가" 항목은 현재 화면에 없음
+- (2026.10) 시장 데이터 풀 Phase 0~4: BPS·SOC 원장, market_flags.db 렌즈, archive_index mk
+  조인, 아카이브 시장 맥락 칩, 📈 마켓워치 탭(Chart.js 4.4.1 cdnjs). 위 "시장 데이터 풀" 절
 
 ## 다음 작업
 
