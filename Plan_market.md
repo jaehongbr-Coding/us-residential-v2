@@ -1,6 +1,7 @@
 # Plan_market.md — The Brief 시장 데이터 풀 + 시장 맥락 판정 구현 계획
 
-> 버전 v0.4 (2026-10-15) · 근거: `research_market.md` v0.1 + Phase 0·1 실측 + **2026-10-15 저장소 구조 조사** · 선행: `CLAUDE.md` (현 구조 정본)
+> 버전 v0.5 (2026-10-15) · 근거: `research_market.md` v0.1 + Phase 0·1 실측 + **2026-10-15 저장소 구조 조사** · 선행: `CLAUDE.md` (현 구조 정본)
+> **v0.5: Phase 0~4 완료. 실측 확정값과 코드 동기화.** §4.1 코드 블록은 커밋된 market_collect.py와 동일, §4.2·§4.3은 상수·로직이 동일하다 — 불일치 시 코드가 정본.
 > ⚠️ v0.4 핵심: v0.1~v0.3이 가정한 `geo_tags.csv`·`articles.csv` 기사 우주가 **틀렸음**. 실제는 원장 `archive/*.csv` 10,249건 + 렌즈 SQLite 3개(`labels.db`·`geo_tags.db`·`seen_index.db`) + 조인 산출물 `archive_index.json`. geo는 **완료 상태**(7,099→10,249건 백필, Haiku). Phase 2·3·4를 실제 구조에 맞춰 재작성.
 > ⚠️ v0.2 핵심 변경: BPS 월간 파일에 보고분/대체추정 분리가 **없음**이 확인됨 → `rep_share` 기반 unknown 규칙을 **물량 하한(volume floor)** 으로 교체. 열 위치 고정 → 헤더명 탐색으로 교체. SOC 파서 확정.
 > §9 미해결 질문은 전부 기본안으로 확정 (Q1 3년 / Q2 70% / Q3 전수 / Q4 유지 / Q5 Phase 2 / Q6 별도 / Q7 별도 워크플로)
@@ -213,6 +214,7 @@ RAW_DIR   = Path("data/market/raw")
 BPS_CSV   = Path("data/market/bps_cbsa.csv")
 LOG_CSV   = Path("data/market/bps_download_log.csv")
 SOC_CSV   = Path("data/market/soc_lag.csv")
+ANOM_CSV  = Path("data/market/bps_anomalies.csv")
 BPS_BASE  = "https://www.census.gov/construction/bps/xls/"
 SOC_URLS  = {
     "auth_to_start": "https://www.census.gov/construction/nrc/xls/avg_authtostart_cust.xlsx",
@@ -291,10 +293,19 @@ def _sheet_table(raw: pd.DataFrame):
     return header, body
 
 
+def _pick_sheet(names: list[str], suffixes: tuple[str, ...]) -> str:
+    """시트명이 연도별로 다르다 (1.3 백필 실측): 2019-11~12 'Units'/'Valuation',
+    2020-01~2023-12·2024-02+ 'MSA Units'/'MSA Value', 2024-01 'CBSA Units'/'CBSA Value'."""
+    hits = [n for n in names if n.strip().endswith(suffixes)]
+    if len(hits) != 1:
+        raise ValueError(f"시트 {suffixes} 후보 {hits} (전체 {names})")
+    return hits[0]
+
+
 def parse_bps(path: Path) -> pd.DataFrame:
     x = pd.ExcelFile(path, engine="xlrd")
-    units = x.parse("MSA Units", header=None)
-    value = x.parse("MSA Value", header=None)
+    units = x.parse(_pick_sheet(x.sheet_names, ("Units",)), header=None)
+    value = x.parse(_pick_sheet(x.sheet_names, ("Value", "Valuation")), header=None)
     period = _find_period(units)
 
     hu, bu = _sheet_table(units)
@@ -325,13 +336,29 @@ def parse_bps(path: Path) -> pd.DataFrame:
     # 무결성 (Phase 0 실측 기반)
     if out.cbsa_code.duplicated().any():
         raise ValueError(f"{path.name}: CBSA 중복")
-    if period.endswith("-01"):
-        bad = out[out.u5_units != out.u5_units_ytd]
-    else:
-        bad = out[out.u5_units > out.u5_units_ytd]
-    if len(bad):
-        raise ValueError(f"{path.name}: 월간 > YTD {len(bad)}행 — 열 탐색 오류 의심")
+    # 원장 원칙: 원본 값은 고치지도 버리지도 않는다. 1% 초과면 열 탐색 오류로 보고 raise
+    viol = out[(out.u5_units != out.u5_units_ytd) if period.endswith("-01")
+               else (out.u5_units > out.u5_units_ytd)]
+    if len(viol) > max(1, int(len(out) * 0.01)):
+        raise ValueError(f"{path.name}: 월간>YTD {len(viol)}행 (>1%) — 열 탐색 오류 의심")
+    if len(viol):
+        _log_anomalies(viol, path.name, period)
+        print(f"  [ANOMALY] {path.name}: 월간>YTD {len(viol)}행 — 원본 그대로 저장, bps_anomalies.csv 기록")
     return out[BPS_COLS]
+
+
+def _log_anomalies(viol: pd.DataFrame, source_file: str, period: str) -> None:
+    """원장 보조 파일. Census 수정 파일이 나오면 대조용."""
+    exists = ANOM_CSV.exists()
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with ANOM_CSV.open("a", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        if not exists:
+            w.writerow(["period","cbsa_code","cbsa_name","u5_units","u5_units_ytd",
+                        "source_file","note","logged_at"])
+        for r in viol.itertuples(index=False):
+            w.writerow([period, r.cbsa_code, r.cbsa_name, r.u5_units, r.u5_units_ytd,
+                        source_file, "monthly_gt_ytd", now])
 
 
 def append_bps(df: pd.DataFrame) -> int:
@@ -452,7 +479,7 @@ import pandas as pd
 RULE_VERSION     = "v1"
 WINDOW_M         = 12      # 최근 창
 BASE_YEARS       = 3       # 기저선 (Q1)
-VOLUME_FLOOR     = 300     # 3년 평균 연간 5+유닛 하한 (초안). Phase 2.2 실측 분포로 보정
+VOLUME_FLOOR     = 1000    # 2026-10-15 실측 확정: 판정 가능 80 CBSA, ratio p10~p90 0.64~1.46 (하한 300은 양극단이 프로젝트 1~2건 노이즈)
 LAG_BUCKET       = "20+"   # research_market §4.2.5
 
 
@@ -538,7 +565,7 @@ def region_map(bps: pd.DataFrame, state_region: pd.DataFrame) -> dict[str, str]:
 from market_context import MarketContext
 
 RULE_VERSION = "v1"
-THRESH = dict(surge=1.30, drought=0.70)   # Phase 1 실측 분포로 보정 (§7.3)
+THRESH = dict(surge=1.25, drought=0.75)   # 2026-10-15 실측 확정: VOLUME_FLOOR 1000 기준 p80 1.256 / p20 0.742 반올림
 
 def judge(ctx: MarketContext) -> list[str]:
     if ctx.coverage in ("no_data", "low_volume"):  return ["unknown"]   # S3
@@ -552,7 +579,7 @@ def judge(ctx: MarketContext) -> list[str]:
     return flags
 ```
 
-규칙 추가 절차(M2): 이 파일 상단 주석에 `# RULES: S1 S2 S3` 목록을 유지하고, 추가 시 `RULE_VERSION`을 올린다.
+규칙 추가 절차(M2): 이 파일 상단 주석에 `# RULES: S1 supply_surge / S2 supply_drought / S3 unknown — 상한 6 (M2)` 목록을 유지하고, 추가 시 `RULE_VERSION`을 올린다.
 
 ### 4.4 `market_store.py` + `market_tagger.py` — v0.4
 
@@ -829,34 +856,27 @@ for u in U:
 ```
 → 출력으로 열 위치(COL)·SOC 파서를 확정하고 Plan v0.2에 반영한 뒤 Phase 1 착수.
 
-### 4.8 `index.html` (Phase 4) — v0.4
+### 4.8 `index.html` (Phase 4) — v0.5 실제 구현
 
-현재 index.html은 `articles.csv`, `archive_index.json`, `reports/`, `manifest.json`을 읽는다. Chart.js 참조 없음.
+index.html은 `articles.csv`, `archive_index.json`, `data/market/context_latest.json`(신규), `reports/`, `manifest.json`을 읽는다.
 
-**(a) 아카이브 카드 칩** — `archive_index.json` records의 `rel` 칩 **옆에** `mk` 칩. 합산 없음 (M1)
-```javascript
-const FLAG_LABEL = { supply_surge:"공급 급증", supply_drought:"공급 감소", unknown:"판정불가(물량 부족)" };
-const CBSA_SHORT = { "12060":"ATL","19100":"DFW","31080":"LA","42660":"SEA","19740":"DEN","38060":"PHX","17860":"COMO" };
-// rec.mk = [[cbsa, flags, ratio, cov], …]  (없으면 undefined → 칩 없음)
-// 각 행마다: flags가 비면 "평년 수준" 회색 칩, unknown이면 회색, surge/drought는 각각 색 칩
-//   <span class="chip chip-mkt" title="BPS 5+유닛 12m / 3y평균 = 0.62 (as_of 2026-06)">공급 감소 · ATL</span>
-// cbsa_titles(archive_index.json 최상위)에서 긴 이름을 title에 넣는다
-```
+**(a) 시장 맥락 칩 — 아카이브 표 제목 셀.** 아카이브는 카드가 아니라 표이고 `rel`은 50px 텍스트 칸이라 그 옆에 칩이 들어가지 않는다. 제목 링크 아래 `<div class="mk-row">`에 `rec.mk` 행마다 `<span class="mk-chip mk-{flat|unknown|surge|drought}">`. `mk`가 없으면 줄 자체를 만들지 않는다. 필터용 `.chip`과 별개 클래스(표시 전용).
+- 라벨: 평년 / 판정불가 / 공급 급증 / 공급 감소 + ` · ` + 약칭
+- 약칭: `CBSA_SHORT[cbsa]`(ATL DFW LA SEA DEN PHX COMO) ?? `cbsa_titles[cbsa].split(",")[0].split("-")[0].trim()` ("Orlando-Kissimmee-Sanford, FL" → "Orlando")
+- title: `{cbsa_titles} · BPS 5+유닛 12개월합/3년평균 {ratio(ok일 때만) | —} · 발행월 기준`
+- 색(기존 팔레트): flat #eee/#555, unknown 흰 바탕 점선 #999, surge #fff4d6/#f4b400, drought #e8eef5/#1B3A5C
+- 관련성 칸·정렬·필터 불변 (M1·I6)
 
-**(b) 마켓워치 섹션 (신규)** — 아카이브 섹션 아래 또는 별도 탭. `context_latest.json` 로드.
-```javascript
-// Chart.js 재도입: <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js">
-const CTX_URL = `${REPO_RAW}/data/market/context_latest.json`;
-const WATCH = ["12060","19100","31080","42660","19740","38060","17860"];
-// 상단: as_of, rule_version
-// CBSA 셀렉트(WATCH 기본, 전체 검색 가능) →
-//   요약 타일: ratio_12m_vs_3y · coverage · flags · units_12m · units_avg3y · article_counts
-//   차트: monthly 36개월 bar(u5_units, #1B3A5C) + 12개월 이동합 line(#2E75B6)
-//   준공 예상 표: expected_completion.by_quarter 4개
-//   고정 문구: "준공 예상은 SOC {region} 평균 lag {lag_months}개월(20+유닛) 적용 추정치. 미착공·취소 미반영."
-//   low_volume이면 차트는 그리되 타일에 "판정 불가 — 3년 평균 {units_avg3y}유닛/년 < 하한"
-```
-- I6(geo 필터 UI 미노출) 유지: 아카이브 필터에 CBSA·flag 필터를 **추가하지 않는다**. 칩 표시만. (`filters.market_flags`는 데이터에 두되 UI 필터는 Phase 5 이후 별도 결정)
+**(b) 마켓워치 — 세 번째 페이지 탭 `📈 마켓워치`.** `.page-tabs`에 버튼 + `#page-market` 패널, `switchPage()` 분기. `loadMarketData()`가 `marketLoaded` 플래그로 탭 첫 진입 시 1회 fetch(1.5MB). `MARKET_CTX_URL`은 `ARCHIVE_INDEX_URL` 옆 상수.
+- Chart.js: cdnjs `4.4.1/chart.umd.min.js`, onerror 콘솔 기록
+- 구성: 메타 한 줄(기준월·규칙·출처) → CBSA `<select>`(WATCH 7개 약칭+이름, 구분선, 나머지 이름순, 기본 12060) → 타일 4개(3년 대비 / 판정 / 12개월 허가+3년평균 / 기사 수, 모바일 2×2) → flags 칩(mk-chip, 약칭 없음) → 차트(높이 240, bar u5_units #1B3A5C + 12개월 이동합 line #2E75B6 우측 축, 첫 11개월 null) → 준공 예상 표(by_quarter, 비면 "lag 산출 불가") → 고정 문구(기저선 설명 + SOC region lag, low_volume이면 "판정 불가 — 3년 평균 …유닛/년 < 하한 1,000" 선행)
+- x축 라벨: 3개월마다, **모바일(<600px)은 6개월마다**(겹침 방지)
+- 셀렉트 변경 시 기존 Chart 인스턴스 destroy 후 재생성
+- 기사 수 타일은 `article_counts.total` = not_applicable 제외 판정 행 수
+
+**(c) `service-worker.js`** — Network First 조건에 `context_latest.json` 추가(articles.csv·archive_index.json과 같은 이유: daily·monthly 갱신 데이터가 Cache First로 굳는 것 방지).
+
+- I6 유지: 아카이브 필터에 CBSA·flag 필터를 추가하지 않았다. `filters.market_flags`는 데이터에만 있다.
 
 ## 5. 트레이드오프 총괄
 
@@ -888,18 +908,18 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"];
 ## 7. To-Do (승인 후 순차 실행 — 각 단계 독립 커밋, 검증·보고 후 다음)
 
 ### Phase 0 — 진단 (구현 아님)
-- [ ] 0.1 `requirements.txt`에 `xlrd>=2.0.1` 추가 — 커밋 `chore: xlrd 추가 (BPS .xls 파싱)`
-- [ ] 0.2 `diagnose_market.py` + `diagnose_market.yml` — 커밋 `diag: 시장 데이터 소스 진단 워크플로`
+- [x] 0.1 `requirements.txt`에 `xlrd>=2.0.1` 추가 — 커밋 `chore: xlrd 추가 (BPS .xls 파싱)`
+- [x] 0.2 `diagnose_market.py` + `diagnose_market.yml` — 커밋 `diag: 시장 데이터 소스 진단 워크플로`
 - [x] 0.3 Actions 수동 실행 → 로그 전문 → **Plan v0.2** (완료 2026-10-15: 4 URL 200, 헤더명 탐색으로 전환, SOC 파서 확정, rep→volume floor)
 
 ### Phase 1 — 수집 (geo 무관)
-- [ ] 1.1 `data/market/state_region.csv` 51행 — 커밋 `data: state→Census Region 정적 테이블`
-- [ ] 1.2 `market_collect.py` (bps) + `tests/test_market_parse.py` + fixtures 2파일(202608, 202312) — 커밋 `feat: BPS 월간 CBSA 수집기`
-- [ ] 1.3 로컬에서 `python market_collect.py bps` 백필 (2019-11~2026-08, 약 82파일) → `data/market/raw/`·`bps_cbsa.csv`·log 커밋 `data: BPS 백필 2019-11~2026-08`
+- [x] 1.1 `data/market/state_region.csv` 51행 — 커밋 `data: state→Census Region 정적 테이블`
+- [x] 1.2 `market_collect.py` (bps) + `tests/test_market_parse.py` + fixtures 2파일(202608, 202312) — 커밋 `feat: BPS 월간 CBSA 수집기`
+- [x] 1.3 로컬에서 `python market_collect.py bps` 백필 (2019-11~2026-08, 약 82파일) → `data/market/raw/`·`bps_cbsa.csv`·log 커밋 `data: BPS 백필 2019-11~2026-08`
   - 검증: 2024+ 32파일 × ~929 + 2019-11~2023-12 50파일 × ~393 ≈ 49,400행, Atlanta 12060 82개월 전부 존재, 월간 ≤ YTD 전수, (period, cbsa) 중복 0
-- [ ] 1.4 `market_collect.py` (soc) — 커밋 `feat: SOC 소요기간 수집기` + `data/market/soc_lag.csv`
+- [x] 1.4 `market_collect.py` (soc) — 커밋 `feat: SOC 소요기간 수집기` + `data/market/soc_lag.csv`
   - 검증: 2025 South 2+ = 17.5, 20+ = 21.8 (assert 내장). 행수 = 연도(1971~2025 중 유효) × 5 region × 5 bucket
-- [ ] 1.5 `monthly_market.yml` — 커밋 `ci: 월간 시장 데이터 수집 워크플로`
+- [x] 1.5 `monthly_market.yml` — 커밋 `ci: 월간 시장 데이터 수집 워크플로`
 
 ### Phase 2 — 판정 (geo 무관)
 - [x] 2.0 **수집기 보정** (Phase 1 피드백): (a) `collect_bps` 종료월 `month-2`→`month-1` (b) `collect_soc` sha256 멱등 (c) `monthly_market.yml` cron 26→29일 — 커밋 `fix: 수집기 종료월·SOC 멱등·cron 조정`
@@ -924,24 +944,27 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"];
 - [ ] 4.3 스크린샷 → 공모전 증빙 6번용 보관
 
 ### Phase 5 — 정리
-- [ ] 5.1 research_market.md 정정 3건: §4.1.3 보고분 열 부재→물량 하한 / §4.2.5 "South가 짧다"는 2+ 전체(17.5 vs West 20.6)에서만 성립하고 **20+ 구간은 South 21.8 ≈ West 22.6**, 최단은 Midwest 17.6 / §9 결정·실측 임계값
-- [ ] 5.2 `CLAUDE.md` 갱신: 시장 데이터 풀 섹션, 데이터 현황 표(10,249), 일일 파이프라인 5단계(collect→classify→geo→**market**→index), docs/history 이동 반영
-- [ ] 5.3 공모전 Before/After 지표 1행 작성: "공급 판정 근거: 기사 건수 → BPS 5+유닛 허가 12m합 / 3y평균, 보고율 표기"
+- [x] 5.0 CBSA 약칭 하이픈 앞까지 (index.html) — 커밋 `fix(ui): CBSA 약칭 하이픈 앞까지`
+- [x] 5.1 research_market.md §12 정정 섹션(본문 불변): 보고분 열 부재→물량 하한 / 20+ 구간 Sun Belt 이점 없음 / geo 완료 전제 오류 / 임계 확정 / relevance×flags 독립 / Columbia MO — 커밋 `docs: research_market 정정 섹션 추가 (Phase 0~4 실측)`
+- [x] 5.2 `CLAUDE.md` 갱신: 데이터 현황(10,249), 일일 파이프라인(collect→classify→geo→**market**→index), 시장 데이터 풀 절, docs/history 이동·트렌드 차트 삭제 — 커밋 `docs: CLAUDE.md 시장 데이터 풀 반영`
+- [x] 5.3 Plan_market v0.5 (이 문서, 코드 동기화) — 커밋 `docs: Plan_market v0.5 (Phase 0~4 완료, 코드 동기화)`
+- [ ] 5.4 `docs/contest_evidence.md` 공모전 Before/After·확산 가능성·커버리지 정직성 재료 — 커밋 `docs: 공모전 증빙 재료 초안`
 
 ---
 
 ## 8. 검토 요청 (사용자 확인)
 
-| # | 항목 | 기본안 |
+| # | 항목 | 상태 |
 |---|---|---|
-| C1 | 관심 CBSA 7개 목록(§4.8) 적정한가 — Houston(26420)·Charlotte(16740) 추가? | 7개 유지, 필요 시 상수 1줄 |
-| C2 | 기사 카드 칩 문구: "공급 감소" vs "supply_drought" 원문 | 한글 라벨 + title 속성에 수치 |
-| C3 | ~~geo 착수 시점~~ 전제 충족 (geo 완료) | — |
-| C7 | `read_archive()` 실제 반환 타입(list[dict] vs DataFrame) — 3.1 착수 시 코드 확인 후 tagger 맞춤 | Phase 3 |
-| C8 | A6 후속(`_judge_access_limited` 본문→summary 덮어쓰기)은 이 Plan 범위 밖. 별도 결정 | — |
-| C4 | ~~SOC 파서~~ 확정됨 | — |
-| C5 | `metro_micro` 코드 의미(Atlanta=2, Aberdeen SD=5)를 Census 문서로 확인 — 2=Metro, 5=Micro 추정 [추정]. 화면 필터에 쓰기 전 확인 | Phase 4 전 확인 |
-| C6 | 2019-11~2021-12 파일의 `Monthly Coverage Percent*` 열 재파싱 여부 — 백필 구간 기저선 신뢰도 참고용. 현재 판정에는 미사용 | Phase 5 검토, 기본 보류 |
+| C1 | 관심 CBSA 7개 목록 — Houston(26420)·Charlotte(16740) 추가? | 7개 유지, 필요 시 `CBSA_SHORT`·`MARKET_WATCH` 상수 1줄 |
+| C2 | 칩 문구 | **확정: 한글 라벨**(평년/공급 급증/공급 감소/판정불가) + title에 수치 |
+| C3 | ~~geo 착수 시점~~ | 해소 (geo 완료) |
+| C4 | ~~SOC 파서~~ | 해소 |
+| C5 | `metro_micro` 코드 의미 | **정정**: 실측 값은 2·4·5 세 가지(2026-08: 2=275, 4=112, 5=534). "2=Metro, 5=Micro" 추정은 불완전, 의미 미확인. **어떤 필터·판정에도 쓰지 않는다** |
+| C6 | 2019-11~2021-12 `Monthly Coverage Percent*` 재파싱 | 보류 유지 (판정 미사용) |
+| C7 | `read_archive()` 반환 타입 | **해소**: `list[dict]`(csv.DictReader), `article_id`·`published_at` 키 존재 — tagger 무수정 |
+| C8 | A6 후속(`_judge_access_limited` 본문→summary) | 이 Plan 범위 밖, 유지 |
+| C9 | index.html의 marked.js가 jsdelivr에서 **버전 미고정**(`npm/marked/marked.min.js`) | 신규, 별건 |
 
 ---
 
@@ -950,6 +973,7 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"];
 | 버전 | 일자 | 변경 |
 |---|---|---|
 | v0.1 | 2026-10-15 | 최초 작성. research_market §9 기본안 전부 채택. geo Plan.md I1~I8 계승 + M1~M7 추가 |
+| v0.5 | 2026-10-15 | **Phase 0~4 완료, 코드 동기화.** ① §4.1 코드 블록을 커밋된 market_collect.py로 교체(_pick_sheet, 이상값 1% 정책·bps_anomalies.csv, 종료월 month-1, SOC sha256 멱등) ② VOLUME_FLOOR 1000·THRESH 1.25/0.75 실측 확정 ③ §4.8 실제 구현(제목 셀 mk-row, 세 번째 페이지 탭, 모바일 x축 6개월, service-worker Network First, 약칭 하이픈 규칙) ④ §8 C2 확정·C5 정정·C7 해소·C9 추가 ⑤ §7 Phase 0·1 체크 누락 복구, Phase 5 재작성(공모전 항목 5.4로) |
 | v0.4 | 2026-10-15 | **저장소 구조 조사 반영.** ① geo는 완료(geo_tags.db 10,249행) — Phase 3 전제 충족 ② 기사 우주를 articles.csv→archive/ 원장으로 ③ 렌즈 저장을 csv→`market_flags.db`(M8) + `market_store.py` ④ 조인은 `build_archive_index.py`(mk 필드) ⑤ 적용 조건에 confidence 필터 추가 ⑥ index.html 트렌드 차트 부재 확인 → 마켓워치 신규 섹션 + Chart.js 재도입 ⑦ daily 스텝 위치 geo 뒤·index 앞 ⑧ C3 해소, C7·C8 추가 |
 | v0.3 | 2026-10-15 | Phase 1 완료 반영. ① 시트명 연도별 차이(`_pick_sheet`) ② 행수 실측 368/384/921 ③ 이상값 정책 확정(1% 임계, `bps_anomalies.csv`) ④ Columbia MO avg3y 271 → `low_volume` 유지 결정, 2.2 문구를 "맞추지 않는다"로 수정 ⑤ SOC 20+ 지역 격차 실측(NE 25.7 / MW 17.6 / S 21.8 / W 22.6 / US 21.7) — research §4.2.5 Sun Belt 논거 정정 필요 ⑥ Phase 2.0 추가(종료월 month-1, SOC sha256 멱등, cron 29일) ⑦ C6 추가 |
 | v0.2 | 2026-10-15 | Phase 0 진단 반영. ① 4 URL 200 → 자동 수집 확정 ② BPS 월간 파일에 보고분(rep)·MONCOV 없음 → `rep_share`/`imputed` 폐기, `VOLUME_FLOOR`/`low_volume`로 교체 (M6 수정) ③ 2024+ 파일 `Metro /Micro Code` 열 삽입으로 열 위치 밀림 → 헤더명 탐색 ④ 2023 이전 Metro만 393행, 2024+ Metro+Micro 929행 ⑤ SOC 파서 확정(행4~5 2단 헤더, 열5~9, 검증값 South 2025 2+ 17.5 / 20+ 21.8) ⑥ 실측값 Atlanta 2026-08 u5=875/YTD 8,361, 2023-12 u5=440/YTD 14,227 |
