@@ -16,7 +16,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python market_collect.py bps
       - run: python market_collect.py soc
-      # market_tagger.py 스텝은 Phase 2.4에서 추가
+      - run: python market_tagger.py --mode context-only   # data/market/context_latest.json (기사 태깅은 Phase 3)
       - name: Commit & push
         run: |
           git config user.name "github-actions[bot]"
