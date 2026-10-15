@@ -75,7 +75,8 @@ def _article_counts(market_db: Path) -> dict | None:
             "WHERE rule_version=? AND coverage!='not_applicable' GROUP BY cbsa_code", (RULE_VERSION,)).fetchall()
     finally:
         conn.close()
-    return {code: {"total": total, "flagged": ok} for code, total, ok in rows}
+    # total = not_applicable 제외 판정 대상 행, judgeable = 그중 coverage ok(판정 가능) 행
+    return {code: {"total": total, "judgeable": ok} for code, total, ok in rows}
 
 
 def dump_context(bps, soc, region_of, out_path: Path = OUT_JSON, market_db: Path = MARKET_DB) -> int | None:

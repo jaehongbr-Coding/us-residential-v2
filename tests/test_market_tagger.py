@@ -53,7 +53,7 @@ def test_dump_modes_identical_except_generated_at(tmp_path):
     assert n1 == n2 == 1
     assert _no_gen(tmp_path / "ctx_only.json") == _no_gen(tmp_path / "incremental.json")
     d = json.loads((tmp_path / "ctx_only.json").read_text(encoding="utf-8"))
-    assert d["cbsa"]["22222"]["article_counts"] == {"total": 1, "flagged": 1}
+    assert d["cbsa"]["22222"]["article_counts"] == {"total": 1, "judgeable": 1}
     assert d["cbsa"]["11111"]["article_counts"] is None
 
 
