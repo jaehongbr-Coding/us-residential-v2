@@ -63,7 +63,8 @@ def tag_articles(bps, soc, region_of) -> int:
 
 def dump_context(bps, soc, region_of, with_counts: bool) -> None:
     as_of = str(pd.to_datetime(bps.period).max().to_period("M"))
-    names = bps.drop_duplicates("cbsa_code", keep="last").set_index("cbsa_code").cbsa_name.to_dict()
+    # as_of 월에 행이 있는 CBSA만 (구 vintage 코드 7개 제외 — 2023-12에서 끊김)
+    names = bps[bps.period == as_of].set_index("cbsa_code").cbsa_name.to_dict()
     counts = {}
     if with_counts:
         from market_store import open_market

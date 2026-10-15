@@ -8,3 +8,4 @@ seen_index.db binary merge=ours
 labels.db binary merge=ours
 geo_tags.db binary merge=ours
 archive/*.csv merge=union
+market_flags.db binary merge=ours
