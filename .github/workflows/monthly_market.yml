@@ -1,7 +1,7 @@
 name: Monthly Market Collect
 on:
   schedule:
-    - cron: "0 2 29 * *"   # 매월 29일 02:00 UTC = 11:00 KST. Census 월간 공표(18번째 근무일, 늦으면 26~28일) 이후. 2월은 발화 안 함 → 3월 실행이 두 달치 처리
+    - cron: "23 2 29 * *"  # 매월 29일 02:23 UTC = 11:23 KST (정시 혼잡 회피). Census 월간 공표(18번째 근무일, 늦으면 26~28일) 이후. 2월은 발화 안 함 → 3월 실행이 두 달치 처리
   workflow_dispatch:
 concurrency: { group: monthly-market, cancel-in-progress: false }
 permissions: { contents: write }

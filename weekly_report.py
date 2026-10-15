@@ -28,6 +28,19 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 # 설정
 # ------------------------------------------------------------------
 
+try:
+    from zoneinfo import ZoneInfo
+    KST = ZoneInfo("Asia/Seoul")
+except Exception:                       # tzdata 없는 환경 폴백 — 한국은 DST가 없어 고정 +9와 동일
+    KST = timezone(timedelta(hours=9), "KST")
+
+
+def _now_kst() -> datetime:
+    """리포트 파일명·기간·작성일은 KST 날짜 기준 (러너는 UTC라 월요일 새벽 실행이 일요일로 찍히는 문제 방지).
+    naive datetime을 돌려준다 — 기존 strftime·strptime 비교 코드를 그대로 쓰기 위해."""
+    return datetime.now(KST).replace(tzinfo=None)
+
+
 ARTICLES_CSV = "articles.csv"
 REPORTS_DIR  = "reports"
 MODEL        = "claude-sonnet-4-6"
@@ -234,7 +247,7 @@ def load_weekly_reports(days: int) -> list[tuple[str, str]]:
     """reports/ 폴더에서 기간 내 weekly .md 파일을 (파일명, 내용) 리스트로 반환."""
     if not os.path.isdir(REPORTS_DIR):
         return []
-    cutoff = datetime.now() - timedelta(days=days)
+    cutoff = _now_kst() - timedelta(days=days)
     result = []
     for fname in sorted(os.listdir(REPORTS_DIR)):
         if not (fname.endswith("_weekly.md") or fname.endswith("-weekly.md")):
@@ -295,8 +308,8 @@ def generate_report_from_weeklies(weekly_reports: list[tuple[str, str]], period:
 def generate_report(articles: list[dict], period: str) -> str:
     days = PERIOD_DAYS[period]
 
-    date_to   = datetime.now().strftime("%Y-%m-%d")
-    date_from = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    date_to   = _now_kst().strftime("%Y-%m-%d")
+    date_from = (_now_kst() - timedelta(days=days)).strftime("%Y-%m-%d")
 
     # woomi_relevance 높음 우선, 최대 100건으로 제한
     sorted_articles = sorted(
@@ -364,14 +377,14 @@ def _market_section() -> str:
 def save_report(content: str, period: str) -> str:
     os.makedirs(REPORTS_DIR, exist_ok=True)
 
-    today    = datetime.now().strftime("%Y%m%d")
+    today    = _now_kst().strftime("%Y%m%d")
     filename = f"{today}_{period}.md"
     filepath = os.path.join(REPORTS_DIR, filename)
 
     days      = PERIOD_DAYS[period]
-    date_from = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-    date_to   = datetime.now().strftime("%Y-%m-%d")
-    generated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    date_from = (_now_kst() - timedelta(days=days)).strftime("%Y-%m-%d")
+    date_to   = _now_kst().strftime("%Y-%m-%d")
+    generated = _now_kst().strftime("%Y-%m-%d %H:%M:%S")
 
     meta = (
         f"---\n"
@@ -440,9 +453,9 @@ def save_report_docx(md_content: str, period: str) -> str:
     FONT     = "Noto Sans KR"
 
     days      = PERIOD_DAYS[period]
-    date_from = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-    date_to   = datetime.now().strftime("%Y-%m-%d")
-    year_month = datetime.now().strftime("%Y년 %-m월") if os.name != "nt" else datetime.now().strftime("%Y년 %#m월")
+    date_from = (_now_kst() - timedelta(days=days)).strftime("%Y-%m-%d")
+    date_to   = _now_kst().strftime("%Y-%m-%d")
+    year_month = _now_kst().strftime("%Y년 %-m월") if os.name != "nt" else _now_kst().strftime("%Y년 %#m월")
 
     # ── 헬퍼 ──────────────────────────────────────────────────
     def _run(para, text, size_pt=10, bold=False, color=None, italic=False):
@@ -544,7 +557,7 @@ def save_report_docx(md_content: str, period: str) -> str:
     doc.add_paragraph()
 
     p_date = _para(doc, WD_ALIGN_PARAGRAPH.CENTER)
-    _run(p_date, f"작성일: {datetime.now().strftime('%Y년 %m월 %d일')}  |  해외사업팀", size_pt=10, color=C_GREY)
+    _run(p_date, f"작성일: {_now_kst().strftime('%Y년 %m월 %d일')}  |  해외사업팀", size_pt=10, color=C_GREY)
 
     # 표지 뒤 페이지 구분
     from docx.oxml import OxmlElement as OE
@@ -644,10 +657,19 @@ def save_report_docx(md_content: str, period: str) -> str:
 
     # ── 저장 ──────────────────────────────────────────────────
     os.makedirs(REPORTS_DIR, exist_ok=True)
-    today    = datetime.now().strftime("%Y%m%d")
+    today    = _now_kst().strftime("%Y%m%d")
     filepath = os.path.join(REPORTS_DIR, f"{today}_{period}.docx")
     doc.save(filepath)
     return filepath
+
+
+def report_path_today(period: str) -> str:
+    """save_report()가 오늘 쓸 .md 경로 (KST 날짜)."""
+    return os.path.join(REPORTS_DIR, f"{_now_kst().strftime('%Y%m%d')}_{period}.md")
+
+
+def report_exists_today(period: str) -> bool:
+    return os.path.exists(report_path_today(period))
 
 
 # ------------------------------------------------------------------
@@ -668,11 +690,20 @@ def main():
         default=None,
         help="추가 출력 포맷 (예: --export docx)",
     )
+    parser.add_argument(
+        "--skip-if-exists",
+        action="store_true",
+        help="오늘(KST) 날짜의 리포트 .md가 reports/에 이미 있으면 생성하지 않는다 (주·예비 cron 중복 방지)",
+    )
     args = parser.parse_args()
 
     period = args.period
     export = args.export
     days   = PERIOD_DAYS[period]
+
+    if args.skip_if_exists and report_exists_today(period):
+        print(f"[SKIP] 오늘(KST) {PERIOD_LABEL[period]} 리포트가 이미 있음: {report_path_today(period)}")
+        return
 
     print(f"=== US Residential Intelligence — {PERIOD_LABEL[period]} 리포트 생성 ===")
     print(f"기간: 최근 {days}일\n")

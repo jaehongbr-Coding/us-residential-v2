@@ -454,6 +454,26 @@ Stage B만 재실행")가 실전에서 정확히 의도대로 작동했다.
 
 ## 일일 파이프라인 (daily_collect.yml, 2026.10 기준)
 
+**실행 시각 (2026-10-16 재설계 — 한국 근무 시작 08:30 KST 전에 결과 보장).** GitHub schedule은
+cron 시각보다 크게 늦게 뜬다: 정규 daily 31회 실측 완료 지연 107~330분(중앙 175, p90 248, 최근 2주 중앙 214),
+weekly 4회 104~178분. 그래서 cron을 앞당기고 이중화했다(분은 정시 혼잡 회피):
+
+| 워크플로 | 주 cron | 예비 cron | 중복 방지 |
+|---|---|---|---|
+| daily_collect | 16:43 UTC = 01:43 KST | 19:17 UTC = 04:17 KST | 기존 12시간 경과 가드 (주 성공 시 예비 스킵) |
+| weekly_report | 일 19:47 UTC = 월 04:47 KST | 일 21:23 UTC = 월 06:23 KST | 오늘(KST) `reports/YYYYMMDD_weekly.md` 존재 시 스킵 (`--skip-if-exists`, dispatch `force`로 우회) |
+| monthly_market | 29일 02:23 UTC = 11:23 KST | — | 시각 비민감 |
+
+가드 로그에 `(slot: 16:43 UTC)`처럼 어느 cron에서 떴는지 남는다(수동은 `manual`). 날짜는 전부 **KST**:
+weekly_report.py 파일명·기간·작성일(zoneinfo Asia/Seoul), `auto: daily update` / `자동 주간 리포트 생성` 커밋
+메시지(`TZ=Asia/Seoul date`). 12시간 가드는 커밋 시각(epoch) 경과 기반이라 날짜 표기 변경과 무관하다. 기존
+reports/ 파일명(UTC 날짜로 찍힌 것 포함)은 바꾸지 않았다.
+
+**트레이드오프 — 수집 시각을 01:43 KST로 당긴 결과 미국 동부 12:43 이후 뉴스는 다음 날 브리핑에 포함된다**
+(EDT 기준. EST 기간에는 11:43 ET). 기존 06:00 KST(17:00 ET) 대비 미국 오후 뉴스가 하루 늦게 들어오지만,
+근무 시작 전 결과 보장을 우선했다. weekly(월 04:47 KST)는 같은 날 daily보다 먼저 뜰 수 있어 직전 일요일
+daily까지의 데이터로 만들어진다 — 7일 창 리포트라 영향은 작다.
+
 중복 실행 가드 → collect(collector.py) → classify(classifier.py, Batch API) →
 geo(geo_tagger.py --mode incremental, Haiku) → **market(market_tagger.py --mode incremental)** →
 index(build_archive_index.py) → commit.
@@ -540,8 +560,8 @@ woomi_relevance: CSV 저장만, UI 미노출
   Anthropic 서버에 쌓여 처리 지연 발생 가능
 - 백그라운드 실행 시 출력이 안 보이면 즉시 중단하고 터미널에서 직접 실행 확인
   (PowerShell 백그라운드 셸은 출력 버퍼링 문제 있음)
-- GitHub Actions 실행 시각(21:00 UTC = 06:00 KST) 전후로는 articles.csv를
-  직접 수정하는 스크립트를 실행하지 말 것 (충돌 위험)
+- GitHub Actions 실행 시간대(daily 주 01:43 / 예비 04:17 KST 발화 후 최대 약 5.5시간,
+  즉 대략 01:43~09:50 KST) 동안에는 articles.csv를 직접 수정하는 스크립트를 실행하지 말 것 (충돌 위험)
 - articles.csv를 직접 수정하는 스크립트는 실행 전 반드시 articles.csv.bak 백업 생성
 - classifier.py의 SYSTEM_PROMPT와 CSV_COLUMNS는 수정 전 반드시 영향 범위를 검토할 것
   (CSV_COLUMNS는 csv.DictWriter의 fieldnames로 쓰이며 extrasaction 기본값이 raise라,

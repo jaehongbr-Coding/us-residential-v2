@@ -2,8 +2,16 @@ name: Weekly Intelligence Report
 
 on:
   schedule:
-    - cron: '0 23 * * 0'  # 매주 일요일 23:00 UTC = 월요일 08:00 KST (daily 종료 후)
+    # 2026-10-16 재설계: 실측 지연 104~178분(정규 4회) 기준, 월 08:00 KST 이전 완료 보장. 정시 회피.
+    - cron: '47 19 * * 0'  # 주:   일 19:47 UTC = 월 04:47 KST (daily 예비 04:17 KST 뒤)
+    - cron: '23 21 * * 0'  # 예비: 일 21:23 UTC = 월 06:23 KST — 주 실행이 이미 리포트를 만들었으면 스킵
   workflow_dispatch:
+    inputs:
+      force:
+        description: "오늘(KST) 리포트가 이미 있어도 다시 생성 (검증·재생성용)"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: weekly-report
@@ -32,7 +40,21 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-        run: python weekly_report.py --period weekly --export docx
+        run: |
+          SCHED="${{ github.event.schedule }}"
+          if [ -n "$SCHED" ]; then
+            read -r S_MIN S_HOUR _ <<< "$SCHED"
+            SLOT=$(printf "%02d:%02d UTC" "$S_HOUR" "$S_MIN")
+          else
+            SLOT="manual"
+          fi
+          echo "[RUN] weekly (slot: ${SLOT}) / 실제 시작 $(date -u '+%H:%M UTC') = $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M KST')"
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            python weekly_report.py --period weekly --export docx
+          else
+            # 오늘(KST) 날짜 weekly 파일이 이미 reports/에 있으면 스킵 (주·예비 cron 중복 방지)
+            python weekly_report.py --period weekly --export docx --skip-if-exists
+          fi
 
       - name: Configure git
         run: |
@@ -42,6 +64,6 @@ jobs:
       - name: Commit and push reports
         run: |
           git add reports/*.md reports/*.docx
-          git diff --cached --quiet || git commit -m "자동 주간 리포트 생성 $(date +%Y%m%d)"
+          git diff --cached --quiet || git commit -m "자동 주간 리포트 생성 $(TZ=Asia/Seoul date +%Y%m%d)"
           git pull --rebase origin main
           git push
