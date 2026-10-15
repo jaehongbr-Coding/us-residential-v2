@@ -1,6 +1,7 @@
 # Plan_market.md — The Brief 시장 데이터 풀 + 시장 맥락 판정 구현 계획
 
-> 버전 v0.1 (2026-10-15) · 근거: `research_market.md` v0.1 · 선행: `Plan.md` v0.3 (geo)
+> 버전 v0.2 (2026-10-15) · 근거: `research_market.md` v0.1 + Phase 0 진단 로그(2026-10-15 00:14 UTC) · 선행: `Plan.md` v0.3 (geo)
+> ⚠️ v0.2 핵심 변경: BPS 월간 파일에 보고분/대체추정 분리가 **없음**이 확인됨 → `rep_share` 기반 unknown 규칙을 **물량 하한(volume floor)** 으로 교체. 열 위치 고정 → 헤더명 탐색으로 교체. SOC 파서 확정.
 > §9 미해결 질문은 전부 기본안으로 확정 (Q1 3년 / Q2 70% / Q3 전수 / Q4 유지 / Q5 Phase 2 / Q6 별도 / Q7 별도 워크플로)
 > 구현 원칙: **단계별 독립 커밋, 각 단계 후 검증·보고 후 진행.** 이 문서 승인 전 구현 금지.
 
@@ -16,7 +17,7 @@
 | M3 | 모든 판정 행에 `rule_version`을 남긴다 | 규칙 변경 후 과거 행 재해석 |
 | M4 | 규칙 입력은 `data/market/` 커밋 파일만. **런타임 네트워크 호출 금지** (수집은 전용 워크플로에서만) | I7 계승 |
 | M5 | 기사 건수(뉴스량)를 공급 판정 입력으로 쓰지 않는다 | 프록시 방향 불일치 |
-| M6 | 표본·보고 비율이 임계 미만이면 추정하지 않고 `unknown` | 원칙 ② |
+| M6 | 3년 평균 물량이 하한 미만이면 ratio를 산출하되 판정은 `unknown` (ratio는 노이즈) | 원칙 ② |
 | M7 | `articles.csv`, `classifier.py`, `collector.py`, `geo_*.py`를 수정하지 않는다 | 원장·렌즈 분리 |
 
 ---
@@ -94,20 +95,23 @@
 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
-| `period` | `YYYY-MM` | 파일의 Date(YYYYMM) |
+| `period` | `YYYY-MM` | 파일 행3 열0의 YYYYMM (파일 단위) |
 | `cbsa_code` | str 5자리 | 조인 키 |
 | `cbsa_name` | str | 파일 표기 그대로 (vintage 추적용, 조인에 쓰지 않음) |
-| `moncov` | str | 원본 플래그 (`C` 또는 빈값) |
-| `u1_units` | int | 1-unit 유닛 (총계) |
-| `u5_bldgs` | int | 5+ 건물 수 (총계) |
-| `u5_units` | int | **5+ 유닛 (총계 = 보고+대체추정)** |
-| `u5_value_k` | int | 5+ 가액 ($천) |
-| `u5_units_rep` | int | 5+ 유닛 **보고분만** |
+| `metro_micro` | str | 2024+ 파일의 `Metro /Micro Code` 원값. 2023 이전은 빈값 |
+| `u1_units` | int | 1 Unit (Current Month) |
+| `u5_units` | int | **5 Units or More (Current Month)** — 핵심 지표 |
+| `u5_structures` | int | Num of Structures With 5 Units or More (Current Month) |
+| `u5_units_ytd` | int | 5 Units or More (Year to Date) — 무결성 검증용 |
+| `u5_value_k` | int | 'MSA Value' 시트의 5 Units or More (Current Month), $천 |
 | `source_file` | str | `cbsamonthly_202608.xls` |
 | `parsed_at` | ISO8601 | |
 
-- 2~4유닛은 저장하지 않는다 (무관). 원본 xls는 raw/에 있으므로 언제든 재파싱 가능
-- UNIQUE: (`period`, `cbsa_code`). 같은 파일 재파싱 시 **덮어쓰지 않고 스킵** (월간 추정치는 Census가 수정하지 않으므로 재파싱 결과가 같아야 정상. 다르면 경고)
+- **보고분(rep) 열은 존재하지 않는다** (Phase 0 실측). 2004 샘플과 다름
+- 2~4유닛 저장 안 함. 원본 xls는 raw/에 보관
+- UNIQUE: (`period`, `cbsa_code`). 재파싱 시 스킵
+- 커버리지: 2024-01+ 약 929행(Metro+Micro) / 2019-11~2023-12 약 393행(Metro만). Micro는 2027-01 전까지 3년 기저선 불가 → `no_data`로 자연 처리
+- 무결성 assert: 1월 파일은 `u5_units == u5_units_ytd`; 그 외 `u5_units ≤ u5_units_ytd`
 
 ### 3.2 `data/market/soc_lag.csv`
 
@@ -135,8 +139,7 @@
 | `article_id` | articles.csv 키 |
 | `cbsa_code` | geo_tags.csv의 `geo_cbsa_code`를 `\|`로 분리한 **각각** — 기사 1건이 CBSA 2개면 2행 |
 | `as_of` | `YYYY-MM`. 기사 `published_at` 기준 **직전 완결월** (BPS 공표 지연 반영) |
-| `coverage` | `ok` / `imputed` / `no_data` / `not_applicable` |
-| `rep_share` | float 0~1 또는 빈값 |
+| `coverage` | `ok` / `low_volume` / `no_data` / `not_applicable` |
 | `units_12m` | int 또는 빈값 |
 | `units_avg3y` | float 또는 빈값 |
 | `ratio_12m_vs_3y` | float 또는 빈값 |
@@ -158,10 +161,10 @@
     "12060": {
       "name": "Atlanta-Sandy Springs-Roswell GA",
       "region": "South",
-      "coverage": "ok", "rep_share": 0.94,
+      "coverage": "ok",
       "units_12m": 9120, "units_avg3y": 14830, "ratio_12m_vs_3y": 0.615,
       "flags": ["supply_drought"],
-      "monthly": [{"period":"2023-09","u5_units":1240,"u5_units_rep":1180}, "... 36개"],
+      "monthly": [{"period":"2023-09","u5_units":1240}, "... 36개"],
       "expected_completion": {"lag_months": 17.5, "bucket": "20+", "by_quarter": {"2027Q4": 2310, "2028Q1": 1980, "2028Q2": 1750, "2028Q3": 2100}}
     }
   }
@@ -179,7 +182,8 @@
 
 ```python
 """BPS(월간 CBSA 허가)·SOC(소요기간) 수집. monthly_market.yml 전용.
-런타임(tagger·화면)은 이 스크립트의 산출 파일만 읽는다 (M4)."""
+런타임(tagger·화면)은 이 스크립트의 산출 파일만 읽는다 (M4).
+레이아웃은 Phase 0 진단(2026-10-15) 실측 기준."""
 from __future__ import annotations
 import csv, hashlib, re, sys, time
 from datetime import date, datetime, timezone
@@ -197,13 +201,18 @@ SOC_URLS  = {
     "start_to_comp": "https://www.census.gov/construction/nrc/xls/avg_starttocomp_cust.xlsx",
 }
 HEADERS   = {"User-Agent": "Mozilla/5.0 (compatible; WoomiGlobalResearchBot/2.0)"}
-BPS_START = (2019, 11)   # 월간 CBSA 파일 시작
-BPS_COLS  = ["period","cbsa_code","cbsa_name","moncov","u1_units",
-             "u5_bldgs","u5_units","u5_value_k","u5_units_rep","source_file","parsed_at"]
+BPS_START = (2019, 11)
+BPS_COLS  = ["period","cbsa_code","cbsa_name","metro_micro","u1_units","u5_units",
+             "u5_structures","u5_units_ytd","u5_value_k","source_file","parsed_at"]
 
-# research_market §4.1.2 열 위치 (0-indexed). 열 이름이 아니라 위치로 읽는다 (K1).
-COL = dict(date=0, csa=1, cbsa=2, moncov=3, name=4,
-           u1_units=6, u5_bldgs=14, u5_units=15, u5_value=16, u5_units_rep=27)
+# 헤더명 (행7). 2024+는 'Metro /Micro Code' 열이 끼어들어 위치가 밀리므로 이름으로 찾는다.
+# 같은 이름이 Current Month / Year to Date 두 블록에 나오므로 first/second 를 구분한다.
+H_CBSA  = "CBSA"
+H_NAME  = "Name"
+H_MM    = "Metro /Micro Code"
+H_U1    = "1 Unit"
+H_U5    = "5 Units or More"
+H_U5S   = "Num of Structures With 5 Units or More"
 
 
 def bps_filename(y: int, m: int) -> str:
@@ -211,7 +220,7 @@ def bps_filename(y: int, m: int) -> str:
             else f"msamonthly_{y}{m:02d}.xls")
 
 
-def months(start: tuple[int,int], end: tuple[int,int]):
+def months(start, end):
     y, m = start
     while (y, m) <= end:
         yield y, m
@@ -232,31 +241,78 @@ def download(url: str, dest: Path) -> bool:
     return True
 
 
+def _find_period(raw: pd.DataFrame) -> str:
+    """행 0~6 중 열0이 6자리 숫자인 셀 → 'YYYY-MM'."""
+    for i in range(min(8, len(raw))):
+        v = str(raw.iat[i, 0]).strip().replace(".0", "")
+        if re.fullmatch(r"\d{6}", v):
+            return f"{v[:4]}-{v[4:]}"
+    raise ValueError("period(YYYYMM) 셀을 찾지 못함")
+
+
+def _header_row(raw: pd.DataFrame) -> int:
+    for i in range(min(12, len(raw))):
+        if str(raw.iat[i, 1]).strip() == H_CBSA:
+            return i
+    raise ValueError("헤더 행(열1 == 'CBSA')을 찾지 못함")
+
+
+def _col_idx(header: list[str], label: str, nth: int = 0) -> int:
+    hits = [i for i, h in enumerate(header) if h == label]
+    if len(hits) <= nth:
+        raise ValueError(f"헤더 '{label}' {nth+1}번째 없음. 헤더={header}")
+    return hits[nth]
+
+
+def _sheet_table(raw: pd.DataFrame):
+    h = _header_row(raw)
+    header = [str(x).strip() for x in raw.iloc[h].tolist()]
+    body = raw.iloc[h + 1:].copy()
+    cbsa_i = _col_idx(header, H_CBSA)
+    body = body[body.iloc[:, cbsa_i].astype(str).str.strip().str.fullmatch(r"\d{5}(\.0)?")]
+    return header, body
+
+
 def parse_bps(path: Path) -> pd.DataFrame:
-    raw = pd.read_excel(path, header=None, engine="xlrd")
-    # 헤더 행 수가 파일마다 다를 수 있으므로 첫 열이 YYYYMM인 행만 데이터로 취급 (K1)
-    is_data = raw.iloc[:, COL["date"]].astype(str).str.fullmatch(r"\d{6}(\.0)?")
-    d = raw[is_data].copy()
-    if d.empty:
-        raise ValueError(f"{path.name}: 데이터 행 0건 — 열 위치 가정 확인 필요")
-    out = pd.DataFrame({
-        "period":       d.iloc[:, COL["date"]].astype(str).str[:6].str.replace(r"(\d{4})(\d{2})", r"\1-\2", regex=True),
-        "cbsa_code":    d.iloc[:, COL["cbsa"]].astype(str).str.extract(r"(\d{5})")[0],
-        "cbsa_name":    d.iloc[:, COL["name"]].astype(str).str.strip(),
-        "moncov":       d.iloc[:, COL["moncov"]].fillna("").astype(str).str.strip(),
-        "u1_units":     pd.to_numeric(d.iloc[:, COL["u1_units"]], errors="coerce").fillna(0).astype(int),
-        "u5_bldgs":     pd.to_numeric(d.iloc[:, COL["u5_bldgs"]], errors="coerce").fillna(0).astype(int),
-        "u5_units":     pd.to_numeric(d.iloc[:, COL["u5_units"]], errors="coerce").fillna(0).astype(int),
-        "u5_value_k":   pd.to_numeric(d.iloc[:, COL["u5_value"]], errors="coerce").fillna(0).astype(int),
-        "u5_units_rep": pd.to_numeric(d.iloc[:, COL["u5_units_rep"]], errors="coerce").fillna(0).astype(int),
+    x = pd.ExcelFile(path, engine="xlrd")
+    units = x.parse("MSA Units", header=None)
+    value = x.parse("MSA Value", header=None)
+    period = _find_period(units)
+
+    hu, bu = _sheet_table(units)
+    hv, bv = _sheet_table(value)
+    g = lambda b, h, lab, nth=0: pd.to_numeric(b.iloc[:, _col_idx(h, lab, nth)], errors="coerce")
+    code = lambda b, h: b.iloc[:, _col_idx(h, H_CBSA)].astype(str).str.extract(r"(\d{5})")[0]
+
+    u = pd.DataFrame({
+        "cbsa_code":     code(bu, hu),
+        "cbsa_name":     bu.iloc[:, _col_idx(hu, H_NAME)].astype(str).str.strip(),
+        "metro_micro":   (bu.iloc[:, _col_idx(hu, H_MM)].astype(str).str.replace(".0","",regex=False).str.strip()
+                          if H_MM in hu else ""),
+        "u1_units":      g(bu, hu, H_U1, 0).fillna(0).astype(int),
+        "u5_units":      g(bu, hu, H_U5, 0).fillna(0).astype(int),
+        "u5_structures": g(bu, hu, H_U5S, 0).fillna(0).astype(int),
+        "u5_units_ytd":  g(bu, hu, H_U5, 1).fillna(0).astype(int),
     })
-    out = out.dropna(subset=["cbsa_code"])
+    v = pd.DataFrame({
+        "cbsa_code":  code(bv, hv),
+        "u5_value_k": g(bv, hv, H_U5, 0).fillna(0).astype(int),
+    })
+    out = u.merge(v, on="cbsa_code", how="left")
+    out["u5_value_k"] = out.u5_value_k.fillna(0).astype(int)
+    out.insert(0, "period", period)
     out["source_file"] = path.name
     out["parsed_at"]   = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    # 무결성: 보고분 ≤ 총계
-    bad = out[out.u5_units_rep > out.u5_units]
+
+    # 무결성 (Phase 0 실측 기반)
+    if out.cbsa_code.duplicated().any():
+        raise ValueError(f"{path.name}: CBSA 중복")
+    if period.endswith("-01"):
+        bad = out[out.u5_units != out.u5_units_ytd]
+    else:
+        bad = out[out.u5_units > out.u5_units_ytd]
     if len(bad):
-        raise ValueError(f"{path.name}: rep > total {len(bad)}행 — 열 위치 오류 의심")
+        raise ValueError(f"{path.name}: 월간 > YTD {len(bad)}행 — 열 탐색 오류 의심")
     return out[BPS_COLS]
 
 
@@ -265,7 +321,7 @@ def append_bps(df: pd.DataFrame) -> int:
         cur = pd.read_csv(BPS_CSV, dtype=str)
         key = set(zip(cur.period, cur.cbsa_code))
         new = df[~df.apply(lambda r: (r.period, r.cbsa_code) in key, axis=1)]
-        new.to_csv(BPS_CSV, mode="a", header=False, index=False)
+        if len(new): new.to_csv(BPS_CSV, mode="a", header=False, index=False)
     else:
         new = df
         new.to_csv(BPS_CSV, index=False)
@@ -285,17 +341,18 @@ def log_download(path: Path, rows: int) -> None:
 def collect_bps(end: tuple[int,int] | None = None) -> None:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     today = date.today()
-    # 공표 지연: 전전월까지만 시도 (18번째 근무일 공표)
     end = end or ((today.year, today.month - 2) if today.month > 2 else (today.year - 1, today.month + 10))
+    parsed = set()
+    if BPS_CSV.exists():
+        parsed = set(pd.read_csv(BPS_CSV, dtype=str, usecols=["source_file"]).source_file)
     total = 0
     for y, m in months(BPS_START, end):
         fn = bps_filename(y, m)
+        if fn in parsed:
+            continue
         dest = RAW_DIR / fn
-        was_cached = dest.exists()
         if not download(BPS_BASE + fn, dest):
             continue
-        if was_cached and BPS_CSV.exists():
-            continue   # 이미 파싱됨
         df = parse_bps(dest)
         n = append_bps(df)
         log_download(dest, n)
@@ -304,16 +361,48 @@ def collect_bps(end: tuple[int,int] | None = None) -> None:
     print(f"BPS 완료: +{total}행")
 
 
+# ---------------- SOC ----------------
+SOC_SHEETS  = {"United States": "US", "Northeast": "Northeast", "Midwest": "Midwest",
+               "South": "South", "West": "West"}
+SOC_BUCKETS = {5: "2+", 6: "2-4", 7: "5-9", 8: "10-19", 9: "20+"}   # 열 인덱스 (Phase 0 실측)
+
+
+def _parse_soc_file(path: Path, metric: str) -> pd.DataFrame:
+    x = pd.ExcelFile(path, engine="openpyxl")
+    rows = []
+    for sheet, region in SOC_SHEETS.items():
+        df = x.parse(sheet, header=None)
+        # 행4 열5가 'Buildings with 2 units or more' 인지 확인 (레이아웃 가드)
+        assert "2 units or more" in str(df.iat[4, 5]), f"{path.name}/{sheet}: 레이아웃 변경"
+        for i in range(6, len(df)):
+            y = str(df.iat[i, 0]).strip().replace(".0", "")
+            if not re.fullmatch(r"\d{4}", y):
+                break                      # 'RSE' 또는 빈 행에서 종료
+            for ci, bucket in SOC_BUCKETS.items():
+                v = pd.to_numeric(df.iat[i, ci], errors="coerce")   # 'A','NA' → NaN
+                rows.append(dict(year=int(y), region=region, unit_bucket=bucket, metric=metric, months=v))
+    return pd.DataFrame(rows)
+
+
 def collect_soc() -> None:
-    """SOC 두 파일을 받아 soc_lag.csv 생성. 연 1회. 파싱 상세는 구현 시 파일 구조 확인 후 고정.
-    출력 계약: year, region, unit_bucket, months_auth_to_start, months_start_to_comp, months_auth_to_comp
-    region ∈ {US,Northeast,Midwest,South,West}, unit_bucket ∈ {2-4,5-9,10-19,20+,2+}"""
     RAW_DIR.mkdir(parents=True, exist_ok=True)
+    parts = []
     for k, url in SOC_URLS.items():
-        download(url, RAW_DIR / f"soc_{k}.xlsx")
-    # ⚠️ 구현 노트: 두 xlsx의 시트/행 구조를 Phase 0 진단 워크플로 출력으로 확인한 뒤 파서 작성.
-    #    research_market §4.2.2의 수치(2025: 20+ 21.7개월, South 17.5 등)와 일치하는지 assert.
-    raise NotImplementedError("Phase 0 진단 후 파서 고정")
+        dest = RAW_DIR / f"soc_{k}.xlsx"
+        if dest.exists(): dest.unlink()    # 연 1회 전체 갱신
+        download(url, dest)
+        parts.append(_parse_soc_file(dest, k))
+    long = pd.concat(parts)
+    wide = long.pivot_table(index=["year","region","unit_bucket"], columns="metric", values="months").reset_index()
+    wide = wide.rename(columns={"auth_to_start": "months_auth_to_start", "start_to_comp": "months_start_to_comp"})
+    wide["months_auth_to_comp"] = wide.months_auth_to_start + wide.months_start_to_comp
+    wide = wide.sort_values(["year","region","unit_bucket"])
+    # 검증: 2025 South 2+ == 17.5, 20+ == 21.8 (Phase 0 실측 + NAHB 일치)
+    s = wide[(wide.year == 2025) & (wide.region == "South")].set_index("unit_bucket")
+    assert abs(s.loc["2+", "months_auth_to_comp"] - 17.5) < 0.05
+    assert abs(s.loc["20+", "months_auth_to_comp"] - 21.8) < 0.05
+    wide.to_csv(SOC_CSV, index=False)
+    print(f"SOC 완료: {len(wide)}행, 최신 {wide.year.max()}")
 
 
 if __name__ == "__main__":
@@ -322,9 +411,9 @@ if __name__ == "__main__":
 ```
 
 **트레이드오프**
-- 열 **위치** 고정 vs 헤더 파싱: 헤더가 2행 병합이라 이름 파싱이 취약. 위치 고정 + 무결성 assert(rep ≤ total)로 오류를 즉시 드러낸다. 대신 Census가 열을 바꾸면 깨진다 → `tests/test_market_parse.py`가 샘플 파일로 고정
+- **헤더명 탐색** (v0.1 열 위치 고정에서 변경): 2024+ 파일에 `Metro /Micro Code` 열이 끼어들어 위치가 1칸 밀린다. 헤더 행은 단일 행(행7)이고 라벨이 깨끗하므로 이름 탐색이 안전. 같은 라벨이 Current Month/YTD 두 번 나오므로 `nth`로 구분. 무결성은 월간 ≤ YTD로 대체
 - 원본 xls 커밋(13MB) vs 미커밋: 커밋한다. 원장 원칙 + 재파싱 가능. GitHub 1파일 100MB 제한과 무관
-- SOC 파서를 Plan에서 완성하지 않는 이유: xlsx 내부 구조를 못 봤다(WebFetch 불가). Phase 0에서 구조를 출력하고 그 결과로 Plan v0.2에 파서 추가. **추측으로 쓰지 않는다**
+- SOC 파서는 Phase 0 실측으로 확정. 행4~5 2단 헤더, 열5~9 = Total2/2-4/5-9/10-19/20+, 'RSE' 행에서 종료. 검증값 South 2025 (2+ 17.5 / 20+ 21.8)이 NAHB 공표치와 일치
 
 ### 4.2 `market_context.py`
 
@@ -334,22 +423,21 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 import pandas as pd
 
-RULE_VERSION   = "v1"
-WINDOW_M       = 12      # 최근 창
-BASE_YEARS     = 3       # 기저선 (Q1)
-REP_SHARE_MIN  = 0.70    # 보고 비율 임계 (Q2). Phase 1 실측 후 보정
-LAG_BUCKET     = "20+"   # research_market §4.2.5
+RULE_VERSION     = "v1"
+WINDOW_M         = 12      # 최근 창
+BASE_YEARS       = 3       # 기저선 (Q1)
+VOLUME_FLOOR     = 300     # 3년 평균 연간 5+유닛 하한 (초안). Phase 2.2 실측 분포로 보정
+LAG_BUCKET       = "20+"   # research_market §4.2.5
 
 
 @dataclass
 class MarketContext:
     cbsa_code: str
     as_of: str                      # YYYY-MM
-    coverage: str                   # ok | imputed | no_data
-    rep_share: float | None
+    coverage: str                   # ok | low_volume | no_data
     units_12m: int | None
     units_avg3y: float | None
-    ratio_12m_vs_3y: float | None
+    ratio_12m_vs_3y: float | None   # low_volume 에서도 산출 (참고용), 판정은 unknown
     region: str | None
     lag_months: float | None
     def to_dict(self): return asdict(self)
@@ -367,25 +455,19 @@ def compute(cbsa: str, as_of: str, bps: pd.DataFrame, soc: pd.DataFrame | None,
     region = region_of.get(cbsa)
     lag = None
     if soc is not None and region:
-        s = soc[(soc.region == region) & (soc.unit_bucket == LAG_BUCKET)].sort_values("year")
+        s = soc[(soc.region == region) & (soc.unit_bucket == LAG_BUCKET)].dropna(subset=["months_auth_to_comp"]).sort_values("year")
         if len(s): lag = float(s.iloc[-1].months_auth_to_comp)
 
-    if len(w) < need:
-        return MarketContext(cbsa, as_of, "no_data", None, None, None, None, region, lag)
+    if len(w) < need or w.period.iloc[-1] != as_of:
+        return MarketContext(cbsa, as_of, "no_data", None, None, None, region, lag)
 
     recent = w.tail(WINDOW_M)
     base   = w.head(WINDOW_M * BASE_YEARS)
     units_12m   = int(recent.u5_units.sum())
-    rep_total   = int(recent.u5_units_rep.sum())
-    rep_share   = (rep_total / units_12m) if units_12m > 0 else None
     units_avg3y = float(base.u5_units.sum() / BASE_YEARS)
-
-    if rep_share is not None and rep_share < REP_SHARE_MIN:
-        return MarketContext(cbsa, as_of, "imputed", round(rep_share, 3),
-                             units_12m, round(units_avg3y, 1), None, region, lag)
     ratio = (units_12m / units_avg3y) if units_avg3y > 0 else None
-    return MarketContext(cbsa, as_of, "ok", None if rep_share is None else round(rep_share, 3),
-                         units_12m, round(units_avg3y, 1),
+    cov = "low_volume" if units_avg3y < VOLUME_FLOOR else "ok"
+    return MarketContext(cbsa, as_of, cov, units_12m, round(units_avg3y, 1),
                          None if ratio is None else round(ratio, 3), region, lag)
 
 
@@ -398,21 +480,21 @@ def expected_completion(cbsa: str, bps: pd.DataFrame, lag_months: float | None,
     if d.empty: return {}
     d["period_dt"] = pd.to_datetime(d.period, format="%Y-%m")
     d["comp_dt"]   = d.period_dt + pd.DateOffset(months=int(round(lag_months)))
-    d["comp_q"]    = d.comp_dt.dt.to_period("Q").astype(str)
+    d["comp_q"]    = d.comp_dt.dt.to_period("Q")
     last_q = pd.Timestamp.today().to_period("Q")
-    fut = d[d.comp_dt.dt.to_period("Q") > last_q]
+    fut = d[d.comp_q > last_q]
     agg = fut.groupby("comp_q").u5_units.sum().sort_index().head(horizon_q)
-    return {q: int(v) for q, v in agg.items()}
+    return {str(q): int(v) for q, v in agg.items()}
 
 
 def region_map(bps: pd.DataFrame, state_region: pd.DataFrame) -> dict[str, str]:
-    """cbsa_name 끝의 주 약어(첫 번째)로 region 결정. 'Columbus GA-AL' → GA → South."""
+    """cbsa_name 'Atlanta-Sandy Springs-Roswell, GA' / 'Columbus, GA-AL' → 쉼표 뒤 첫 주 → region."""
     s2r = dict(zip(state_region.state, state_region.region))
-    names = bps.drop_duplicates("cbsa_code").set_index("cbsa_code").cbsa_name
+    names = bps.drop_duplicates("cbsa_code", keep="last").set_index("cbsa_code").cbsa_name
     out = {}
     for code, name in names.items():
-        tok = name.strip().split()[-1]          # 'GA-AL'
-        st  = tok.split("-")[0]
+        if "," not in name: continue
+        st = name.split(",")[-1].strip().split("-")[0].strip()
         if st in s2r: out[code] = s2r[st]
     return out
 ```
@@ -420,7 +502,8 @@ def region_map(bps: pd.DataFrame, state_region: pd.DataFrame) -> dict[str, str]:
 **트레이드오프**
 - `as_of` 직전 완결월 기준 vs 발행월: BPS는 전월분을 18번째 근무일에 내므로 발행월 데이터는 없다. 기사 `published_at`의 **2개월 전**을 as_of로 쓴다 (tagger에서 계산). 정확성보다 가용성
 - 기저선 12m 합 vs 월별 이동평균: 월별은 프로젝트 1건에 흔들린다. 12m 합이 "연간 공급" 개념과 맞는다
-- `no_data` 기준을 48개월 전수로 둔 이유: 3년 기저선 + 1년 최근. 2019-11 시작이므로 2023-11 이후 as_of만 판정 가능. 기존 기사(2026-03~)는 전부 충족
+- `no_data` 기준을 48개월 전수로 둔 이유: 3년 기저선 + 1년 최근. 2019-11 시작이므로 2023-11 이후 as_of만 판정 가능. 기존 기사(2026-03~)는 전부 충족. Micro 지역은 2024-01부터만 존재하므로 2027-01 전까지 자동 no_data
+- `low_volume` (v0.1 `imputed` 대체): 보고분 열이 없어 대체추정 비율을 알 수 없다. 대신 3년 평균 연간 5+유닛이 VOLUME_FLOOR 미만이면 ratio가 프로젝트 1~2건에 좌우되는 노이즈이므로 판정하지 않는다. ratio 자체는 참고용으로 남긴다
 
 ### 4.3 `market_rules.py`
 
@@ -432,8 +515,7 @@ RULE_VERSION = "v1"
 THRESH = dict(surge=1.30, drought=0.70)   # Phase 1 실측 분포로 보정 (§7.3)
 
 def judge(ctx: MarketContext) -> list[str]:
-    if ctx.coverage == "no_data":  return ["unknown"]          # S3
-    if ctx.coverage == "imputed":  return ["unknown"]          # S3
+    if ctx.coverage in ("no_data", "low_volume"):  return ["unknown"]   # S3
     flags = []
     r = ctx.ratio_12m_vs_3y
     if r is None:                  return ["unknown"]
@@ -466,7 +548,7 @@ SOC      = Path("data/market/soc_lag.csv")
 STREG    = Path("data/market/state_region.csv")
 OUT_CSV  = Path("market_flags.csv")
 OUT_JSON = Path("data/market/context_latest.json")
-FLAG_COLS = ["article_id","cbsa_code","as_of","coverage","rep_share","units_12m",
+FLAG_COLS = ["article_id","cbsa_code","as_of","coverage","units_12m",
              "units_avg3y","ratio_12m_vs_3y","flags","rule_version","tagged_at"]
 APPLICABLE_SCOPES = {"metro", "local"}
 
@@ -503,13 +585,13 @@ def tag_articles(bps, soc, region_of) -> pd.DataFrame:
             as_of = as_of_for(r.published_at)
             if r.geo_scope not in APPLICABLE_SCOPES or not as_of:
                 rows.append(dict(article_id=r.article_id, cbsa_code=cbsa, as_of=as_of,
-                                 coverage="not_applicable", rep_share="", units_12m="",
+                                 coverage="not_applicable", units_12m="",
                                  units_avg3y="", ratio_12m_vs_3y="", flags="",
                                  rule_version=RULE_VERSION, tagged_at=now))
                 continue
             c = compute(cbsa, as_of, bps, soc, region_of)
             rows.append(dict(article_id=r.article_id, cbsa_code=cbsa, as_of=as_of,
-                             coverage=c.coverage, rep_share=c.rep_share or "",
+                             coverage=c.coverage,
                              units_12m=c.units_12m or "", units_avg3y=c.units_avg3y or "",
                              ratio_12m_vs_3y=c.ratio_12m_vs_3y or "",
                              flags="|".join(judge(c)), rule_version=RULE_VERSION, tagged_at=now))
@@ -527,7 +609,7 @@ def dump_context(bps, soc, region_of) -> None:
     for code in sorted(names):
         c = compute(code, as_of, bps, soc, region_of)
         m = (bps[bps.cbsa_code == code].sort_values("period").tail(36)
-             [["period","u5_units","u5_units_rep"]].to_dict("records"))
+             [["period","u5_units"]].to_dict("records"))
         out["cbsa"][code] = {**c.to_dict(), "name": names[code], "flags": judge(c),
                              "monthly": m,
                              "expected_completion": {"lag_months": c.lag_months, "bucket": "20+",
@@ -555,31 +637,43 @@ if __name__ == "__main__":
 ### 4.5 `tests/`
 
 ```python
-# tests/test_market_parse.py — 샘플 1행으로 열 위치 고정
-# data/market/raw/에 Phase 0에서 받은 cbsamonthly_202608.xls 1개를 fixtures로 복사
-def test_atlanta_row_exists_and_rep_le_total():
+# tests/test_market_parse.py — Phase 1.2에서 받은 실제 파일 2개를 fixtures로 복사
+# fixtures: cbsamonthly_202608.xls (2024+ 레이아웃), msamonthly_202312.xls (2023 레이아웃)
+def test_2026_08_atlanta():
     df = parse_bps(Path("tests/fixtures/cbsamonthly_202608.xls"))
-    a = df[df.cbsa_code == "12060"]
-    assert len(a) == 1
-    assert a.u5_units_rep.iloc[0] <= a.u5_units.iloc[0]
-    assert a.period.iloc[0] == "2026-08"
+    a = df[df.cbsa_code == "12060"].iloc[0]
+    assert a.period == "2026-08" and a.u5_units == 875 and a.u5_units_ytd == 8361
+    assert a.u5_structures == 92 and a.u5_value_k == 132251 and a.metro_micro == "2"
+    assert len(df) >= 900
+def test_2023_12_atlanta_old_layout():
+    df = parse_bps(Path("tests/fixtures/msamonthly_202312.xls"))
+    a = df[df.cbsa_code == "12060"].iloc[0]
+    assert a.period == "2023-12" and a.u5_units == 440 and a.u5_units_ytd == 14227
+    assert a.u5_value_k == 79211 and a.metro_micro == ""
+    assert 380 <= len(df) <= 400
+def test_soc_south_2025():
+    s = pd.read_csv("data/market/soc_lag.csv")
+    r = s[(s.year==2025)&(s.region=="South")].set_index("unit_bucket")
+    assert abs(r.loc["2+","months_auth_to_comp"] - 17.5) < 0.05
+    assert abs(r.loc["20+","months_auth_to_comp"] - 21.8) < 0.05
 
 # tests/test_market_context.py — 합성 데이터로 항등식
 def test_ratio_identity():
     # 48개월, 첫 36개월 월 100유닛, 최근 12개월 월 60유닛 → avg3y 1200, 12m 720, ratio 0.6
-    ...
     assert ctx.units_avg3y == 1200 and ctx.units_12m == 720 and abs(ctx.ratio_12m_vs_3y - 0.6) < 1e-9
-def test_imputed_when_rep_share_low():
-    # rep 50% → coverage == "imputed", ratio None
+def test_low_volume():
+    # 월 10유닛 → avg3y 120 < 300 → coverage == "low_volume", ratio는 산출됨
 def test_no_data_when_short():
     # 47개월 → "no_data"
+def test_no_data_when_as_of_missing():
+    # 48개월 있으나 마지막 period != as_of → "no_data"
 
 # tests/test_market_rules.py — 경계값
 def test_boundaries():
     assert judge(ctx(ratio=1.30)) == ["supply_surge"]
     assert judge(ctx(ratio=1.299)) == []
     assert judge(ctx(ratio=0.70)) == ["supply_drought"]
-    assert judge(ctx(coverage="imputed")) == ["unknown"]
+    assert judge(ctx(coverage="low_volume", ratio=0.3)) == ["unknown"]
 ```
 
 ### 4.6 워크플로
@@ -673,18 +767,18 @@ const FLAG_LABEL = { supply_surge:"공급 급증", supply_drought:"공급 감소
 // Papa.parse(FLAGS_URL) → byArticle: Map<article_id, [{cbsa_code, flags, ratio_12m_vs_3y, coverage}]>
 // 카드 렌더 시:
 //   <span class="chip chip-rel">높음</span>
-//   <span class="chip chip-mkt" title="BPS 12m/3y = 0.62, 보고율 94%">공급 감소 · ATL</span>
-// coverage=not_applicable 이면 칩 생략. unknown 이면 회색 칩 "판정불가(표본 부족)"
+//   <span class="chip chip-mkt" title="BPS 5+유닛 12m 9,120 / 3y평균 14,830 = 0.62">공급 감소 · ATL</span>
+// coverage=not_applicable 이면 칩 생략. unknown 이면 회색 칩 "판정불가(물량 부족)"
 ```
 
 **(b) 마켓워치** — `renderTrendCharts()`의 하드코딩 3개 차트 중 **차트 1·2는 유지**(뉴스 통계, 별건), **차트 3 자리에** 시장 차트를 넣고 섹션 제목을 "마켓워치"로
 ```javascript
 const CTX_URL = ".../data/market/context_latest.json";
 const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL DFW LA SEA DEN PHX Columbia MO
-// 셀렉트 박스로 CBSA 선택 → monthly 36개월 bar(u5_units) + rep(u5_units_rep) overlay
+// 셀렉트 박스로 CBSA 선택 → monthly 36개월 bar(u5_units) + 12개월 이동합 line
 // 상단 요약: ratio_12m_vs_3y, coverage, flags, expected_completion.by_quarter
 // 고정 문구: "준공 예상은 SOC 지역 평균 lag(bucket 20+) 적용 추정치. 미착공·취소 미반영."
-// 색: #1B3A5C(총계) #2E75B6(보고분) — 기존 팔레트
+// 색: #1B3A5C(월간) #2E75B6(12m 이동합) — 기존 팔레트
 ```
 - I6(geo 필터 UI 미노출) 유지: 기사 목록에 CBSA 필터를 넣지 않는다. 칩 표시만
 
@@ -701,7 +795,7 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 | 원본 xls 커밋 | raw 미보관 | 원장 원칙, 재파싱 가능 |
 | 기저선 3년 | 2년 | 팬데믹 급등 포함하면서 과거 과다 미반영 (Q1) |
 | as_of = 발행월−2 | 발행월 | BPS 공표 지연. 가용성 우선 |
-| SOC 파서 Phase 0 후 작성 | 추측 작성 | 구조 미확인. 추측 금지 |
+| unknown 근거 = 물량 하한 | 보고 비율 | 월간 파일에 보고분 열이 없음 (Phase 0 실측). 비율이 노이즈인 소규모 시장을 거르는 것이 목적이므로 물량 하한이 대체 가능 |
 | Legistar 미포함 | 포함 | Seattle만 응답. 별도 Plan |
 
 ---
@@ -720,20 +814,20 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 ### Phase 0 — 진단 (구현 아님)
 - [ ] 0.1 `requirements.txt`에 `xlrd>=2.0.1` 추가 — 커밋 `chore: xlrd 추가 (BPS .xls 파싱)`
 - [ ] 0.2 `diagnose_market.py` + `diagnose_market.yml` — 커밋 `diag: 시장 데이터 소스 진단 워크플로`
-- [ ] 0.3 Actions 수동 실행 → 로그 전문 → **Plan v0.2** (COL 위치 확정, SOC 파서 추가, 차단 시 수동 경로 전환)
+- [x] 0.3 Actions 수동 실행 → 로그 전문 → **Plan v0.2** (완료 2026-10-15: 4 URL 200, 헤더명 탐색으로 전환, SOC 파서 확정, rep→volume floor)
 
 ### Phase 1 — 수집 (geo 무관)
 - [ ] 1.1 `data/market/state_region.csv` 51행 — 커밋 `data: state→Census Region 정적 테이블`
-- [ ] 1.2 `market_collect.py` (bps) + `tests/test_market_parse.py` + fixtures 1파일 — 커밋 `feat: BPS 월간 CBSA 수집기`
+- [ ] 1.2 `market_collect.py` (bps) + `tests/test_market_parse.py` + fixtures 2파일(202608, 202312) — 커밋 `feat: BPS 월간 CBSA 수집기`
 - [ ] 1.3 로컬에서 `python market_collect.py bps` 백필 (2019-11~2026-08, 약 82파일) → `data/market/raw/`·`bps_cbsa.csv`·log 커밋 `data: BPS 백필 2019-11~2026-08`
-  - 검증: 행수 ≈ 82 × ~930, Atlanta 12060 전 월 존재, rep ≤ total 전수, period 중복 0
-- [ ] 1.4 `market_collect.py` (soc) 파서 — Plan v0.2 기준 — 커밋 `feat: SOC 소요기간 수집기` + `data/market/soc_lag.csv`
-  - 검증: 2025 South 20+ ≈ 21.7±0.5 등 research §4.2.2 수치와 대조
+  - 검증: 2024+ 32파일 × ~929 + 2019-11~2023-12 50파일 × ~393 ≈ 49,400행, Atlanta 12060 82개월 전부 존재, 월간 ≤ YTD 전수, (period, cbsa) 중복 0
+- [ ] 1.4 `market_collect.py` (soc) — 커밋 `feat: SOC 소요기간 수집기` + `data/market/soc_lag.csv`
+  - 검증: 2025 South 2+ = 17.5, 20+ = 21.8 (assert 내장). 행수 = 연도(1971~2025 중 유효) × 5 region × 5 bucket
 - [ ] 1.5 `monthly_market.yml` — 커밋 `ci: 월간 시장 데이터 수집 워크플로`
 
 ### Phase 2 — 판정 (geo 무관)
 - [ ] 2.1 `market_context.py` + `tests/test_market_context.py` — 커밋 `feat: 시장 상태 계산 (순수)`
-- [ ] 2.2 **임계값 보정**: 전 CBSA 2026-08 기준 ratio 분포 출력 → 상·하위 20% 지점 보고 → THRESH 확정 (Plan v0.2 기록)
+- [ ] 2.2 **임계값 보정**: 전 CBSA 2026-08 기준 (a) units_avg3y 분포 → VOLUME_FLOOR 확정 (하위 25% 지점 근방, 관심 7개 CBSA가 전부 ok인지 확인) (b) ok인 CBSA의 ratio 분포 → 상·하위 20% 지점으로 THRESH 확정 → Plan v0.3 기록
 - [ ] 2.3 `market_rules.py` + `tests/test_market_rules.py` — 커밋 `feat: 시장 맥락 규칙 S1~S3`
 - [ ] 2.4 `market_tagger.py` (geo 없을 때 context만) → `context_latest.json` — 커밋 `feat: 시장 context 덤프`
   - 검증: 관심 7개 CBSA의 coverage·ratio·flags를 표로 보고
@@ -750,7 +844,7 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 - [ ] 4.3 스크린샷 → 공모전 증빙 6번용 보관
 
 ### Phase 5 — 정리
-- [ ] 5.1 research_market.md §9 결정 사항·실측 임계값을 문서 이력에 기록
+- [ ] 5.1 research_market.md §4.1.3 정정(보고분 열 부재 → 물량 하한) + §9 결정·실측 임계값을 문서 이력에 기록
 - [ ] 5.2 공모전 Before/After 지표 1행 작성: "공급 판정 근거: 기사 건수 → BPS 5+유닛 허가 12m합 / 3y평균, 보고율 표기"
 
 ---
@@ -762,7 +856,8 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 | C1 | 관심 CBSA 7개 목록(§4.8) 적정한가 — Houston(26420)·Charlotte(16740) 추가? | 7개 유지, 필요 시 상수 1줄 |
 | C2 | 기사 카드 칩 문구: "공급 감소" vs "supply_drought" 원문 | 한글 라벨 + title 속성에 수치 |
 | C3 | Phase 3을 geo보다 먼저 할 방법은 없다 — geo 착수 시점 확인 | — |
-| C4 | SOC 파서는 Phase 0 결과 보고 Plan v0.2에서 확정 — 동의? | 동의 전제 |
+| C4 | ~~SOC 파서~~ 확정됨 | — |
+| C5 | `metro_micro` 코드 의미(Atlanta=2, Aberdeen SD=5)를 Census 문서로 확인 — 2=Metro, 5=Micro 추정 [추정]. 화면 필터에 쓰기 전 확인 | Phase 4 전 확인 |
 
 ---
 
@@ -771,3 +866,4 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 | 버전 | 일자 | 변경 |
 |---|---|---|
 | v0.1 | 2026-10-15 | 최초 작성. research_market §9 기본안 전부 채택. geo Plan.md I1~I8 계승 + M1~M7 추가 |
+| v0.2 | 2026-10-15 | Phase 0 진단 반영. ① 4 URL 200 → 자동 수집 확정 ② BPS 월간 파일에 보고분(rep)·MONCOV 없음 → `rep_share`/`imputed` 폐기, `VOLUME_FLOOR`/`low_volume`로 교체 (M6 수정) ③ 2024+ 파일 `Metro /Micro Code` 열 삽입으로 열 위치 밀림 → 헤더명 탐색 ④ 2023 이전 Metro만 393행, 2024+ Metro+Micro 929행 ⑤ SOC 파서 확정(행4~5 2단 헤더, 열5~9, 검증값 South 2025 2+ 17.5 / 20+ 21.8) ⑥ 실측값 Atlanta 2026-08 u5=875/YTD 8,361, 2023-12 u5=440/YTD 14,227 |
