@@ -85,6 +85,12 @@ def test_leakage_clean_returns_empty():
     assert weekly_report.check_market_leakage(md) == []   # "신규 준공 후"는 기사 사실 서술 → 통과
 
 
+def test_leakage_spacing_variants():
+    md = ("## 1. 개발 현황\n- 소형 자산 거래(LA·공급급증).\n\n"
+          "## 4. 시사점\n- LA는 공급급증 시장. SEA는 공급  급증 국면. DFW는 공급 급증 아님. JV 기회.\n")
+    assert weekly_report.check_market_leakage(md) == ["LA는 공급급증 시장.", "SEA는 공급  급증 국면.", "DFW는 공급 급증 아님."]
+
+
 def test_leakage_completion_terms():
     md = "## 4. 시사점\n- DFW는 2027 예상 준공 물량이 높아 모니터링 필요.\n- 신규 준공 후 리파이낸스 확보.\n"
     assert weekly_report.check_market_leakage(md) == ["DFW는 2027 예상 준공 물량이 높아 모니터링 필요."]
