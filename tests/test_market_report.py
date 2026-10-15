@@ -80,8 +80,14 @@ def test_leakage_flags_implications_only():
 
 def test_leakage_clean_returns_empty():
     md = ("## 1. 개발 현황\n- 매입(ATL·평년), 착공(SEA·공급 급증).\n\n"
-          "## 4. 시사점\n- 일본계 자본 JV 진입 패턴 정착. 디스트레스 자산 매입 검토.\n")
-    assert weekly_report.check_market_leakage(md) == []
+          "## 4. 시사점\n- 일본계 자본 JV 진입 패턴 정착. 디스트레스 자산 매입 검토.\n"
+          "- Village at Sonoran Vista가 신규 준공 후 리파이낸스 확보.\n")
+    assert weekly_report.check_market_leakage(md) == []   # "신규 준공 후"는 기사 사실 서술 → 통과
+
+
+def test_leakage_completion_terms():
+    md = "## 4. 시사점\n- DFW는 2027 예상 준공 물량이 높아 모니터링 필요.\n- 신규 준공 후 리파이낸스 확보.\n"
+    assert weekly_report.check_market_leakage(md) == ["DFW는 2027 예상 준공 물량이 높아 모니터링 필요."]
 
 
 def test_region_tokens_missing_db(tmp_path):

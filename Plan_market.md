@@ -963,12 +963,12 @@ index.html은 `articles.csv`, `archive_index.json`, `data/market/context_latest.
 - [x] 5.4 `docs/contest_evidence.md` 공모전 Before/After·확산 가능성·커버리지 정직성 재료 — 커밋 `docs: 공모전 증빙 재료 초안` (cca9daa 완료)
 
 ### Phase 6 — 주간 리포트 시장 맥락 (§4.9)
-- [ ] 6.0 weekly_report.py 구조 조사 보고
-- [ ] 6.1 WATCH 정본 단일화 (market_context.py → context_latest.json watch → index.html)
-- [ ] 6.2 market_report.py 시장 섹션 생성 + 리포트 삽입
-- [ ] 6.3 LLM 프롬프트 참조 블록
-- [ ] 6.4 테스트 4건
-- [ ] 6.5 수동 실행 검증 → 10/19 정규 실행 확인
+- [x] 6.0 weekly_report.py 구조 조사 보고
+- [x] 6.1 WATCH 정본 단일화 (market_context.py → context_latest.json watch → index.html) — 0c9697c
+- [x] 6.2 market_report.py 시장 섹션 생성 + 리포트 삽입 — 8bb09c0
+- [x] 6.3 LLM 프롬프트 참조 블록 — 052d699, 라벨 한 줄로 축소 + 시사점 사후검사 46638a6
+- [x] 6.4 테스트 4건 — 8bb09c0 (이후 위치·참조·사후검사 테스트 추가)
+- [ ] 6.5 10/19 정규 실행 확인 대기(수동 1회 검증 완료 f6e6a39, 위반 2건 → 46638a6으로 구조 수정)
 
 ---
 

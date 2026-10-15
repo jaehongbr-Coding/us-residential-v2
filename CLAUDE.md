@@ -504,6 +504,18 @@ M7 articles.csv·classifier.py·collector.py·geo_*.py 수정 금지 / M8 렌즈
 `market_rules.py`/`market_context.py`의 규칙·임계를 바꾸고 `RULE_VERSION`을 올린다 —
 기존 행은 보존되고 새 버전으로 자동 재태깅된다. market_flags.db를 손으로 고치지 않는다.
 
+**Phase 6 — 주간 리포트 시장 맥락 (2026.10, Plan_market §4.9).** `market_report.py`(순수 함수)가
+context_latest.json만 읽어 WATCH 7(정본: `market_context.WATCH` → json `"watch"`) 시장 표 섹션을 만들고,
+weekly_report.py가 이를 LLM 4개 섹션 중 `## 4. 시사점` 바로 앞에 삽입한다(헤딩 없으면 끝에).
+docx 변환기는 markdown 표를 Table Grid 표로 바꾼다. **M9**: 기존 섹션의 프롬프트·출력 구조는 바꾸지 않고
+시장 섹션은 추가만 한다. context_latest.json이 없거나 깨져도 "시장 데이터 없음"으로 리포트는 정상 생성된다.
+**LLM에는 라벨 한 줄만 전달**한다(`ATL 평년 · … · COMO 판정불가`) — 허가 건수·비율·준공 추정치는 주지 않는다.
+6.5 수동 검증에서 표를 주자 시사점이 라벨·추정치로 투자 권고를 써서 구조를 바꿨다(docs/contest_evidence.md
+"사례: LLM 참조 데이터 축소"). 라벨은 1~3절 괄호 태그로만 허용하고, WATCH 기사에는 프롬프트에 `[지역: LA]` 토큰을 붙인다.
+실행 로그 3줄: `시장 참조 블록: 포함 / 지역 토큰 N건`(참조 전달 여부) · `시장 라벨 사후검사: 시사점 절 위반 0건`
+또는 `[WARN] … 위반 N건`+문장(시사점 절에 라벨·"예상 준공/준공 물량/준공 예정" 유출 — 로그만, 재생성 없음) ·
+`시장 데이터 섹션: 시사점 앞 삽입 | 끝에 덧붙임 | 데이터 없음`. **첫 정규 실행 2026-10-19(월) 08:00 KST** — 이 로그로 검증.
+
 ## articles.csv 컬럼 (16개 확정)
 article_id, collected_at, published_at, source, title,
 url, summary, classified, category, event_tags,
