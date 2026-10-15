@@ -941,7 +941,8 @@ index.html은 `articles.csv`, `archive_index.json`, `data/market/context_latest.
 ### Phase 4 — 화면
 - [x] 4.1 아카이브 카드 mk 칩 — 커밋 `feat(ui): 시장 맥락 칩`
 - [x] 4.2 마켓워치 섹션 신규 + Chart.js 재도입 — 커밋 `feat(ui): 마켓워치`
-- [ ] 4.3 스크린샷 → 공모전 증빙 6번용 보관
+- [x] 4.3 스크린샷 → 공모전 증빙 6번용 보관
+  - 배포 검증 2026-10-15: 마켓워치·칩 정상(Columbia MO 판정불가 표시 확인). 수정 4건 — context dump 모드 일치 fb39e1c / flagged→judgeable a458404 / 검색 CBSA 이름+약어 2bf6f94 / 모바일 필터 접힘·거터 c7f7cd1. 스크린샷 docs/screenshots/
 
 ### Phase 5 — 정리
 - [x] 5.0 CBSA 약칭 하이픈 앞까지 (index.html) — 커밋 `fix(ui): CBSA 약칭 하이픈 앞까지`
@@ -965,6 +966,7 @@ index.html은 `articles.csv`, `archive_index.json`, `data/market/context_latest.
 | C7 | `read_archive()` 반환 타입 | **해소**: `list[dict]`(csv.DictReader), `article_id`·`published_at` 키 존재 — tagger 무수정 |
 | C8 | A6 후속(`_judge_access_limited` 본문→summary) | 이 Plan 범위 밖, 유지 |
 | C9 | index.html의 marked.js가 jsdelivr에서 **버전 미고정**(`npm/marked/marked.min.js`) | 신규, 별건 |
+| C10 | LA Urbanize 소스 기사 171건이 geo 지역 미상(st 빈값). 소스 자체가 LA 전용이므로 source_inferred 경로에서 잡혔어야 함. geo_*.py는 M7로 이번 범위 밖 — 별도 작업으로 (a) geo_tagger의 source_inferred 소스 목록에 LA Urbanize 포함 여부 확인 (b) 다른 지역 전용 소스(예: Urbanize 계열 Atlanta/Seattle 등)도 같은 누락인지 소스별 지역 미상 비율 집계. 2026-10-15 발견 | 신규, 별도 작업 |
 
 ---
 
