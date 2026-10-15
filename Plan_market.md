@@ -1,6 +1,7 @@
 # Plan_market.md — The Brief 시장 데이터 풀 + 시장 맥락 판정 구현 계획
 
-> 버전 v0.2 (2026-10-15) · 근거: `research_market.md` v0.1 + Phase 0 진단 로그(2026-10-15 00:14 UTC) · 선행: `Plan.md` v0.3 (geo)
+> 버전 v0.3 (2026-10-15) · 근거: `research_market.md` v0.1 + Phase 0 진단 + **Phase 1 실측** · 선행: `Plan.md` v0.3 (geo)
+> Phase 1 완료 (커밋 ed6344a..9e73b7b, 2026-10-15). v0.3는 실측 차이 반영 + Phase 2 착수 전 수정 2건(2.0).
 > ⚠️ v0.2 핵심 변경: BPS 월간 파일에 보고분/대체추정 분리가 **없음**이 확인됨 → `rep_share` 기반 unknown 규칙을 **물량 하한(volume floor)** 으로 교체. 열 위치 고정 → 헤더명 탐색으로 교체. SOC 파서 확정.
 > §9 미해결 질문은 전부 기본안으로 확정 (Q1 3년 / Q2 70% / Q3 전수 / Q4 유지 / Q5 Phase 2 / Q6 별도 / Q7 별도 워크플로)
 > 구현 원칙: **단계별 독립 커밋, 각 단계 후 검증·보고 후 진행.** 이 문서 승인 전 구현 금지.
@@ -69,6 +70,7 @@
 | `data/market/raw/` | 디렉터리 | 원본 .xls/.xlsx 보관 (원장) |
 | `data/market/bps_cbsa.csv` | 데이터 | 파싱 결과 (원장, append-only) |
 | `data/market/bps_download_log.csv` | 데이터 | 파일명·받은 시각·행수·sha256 |
+| `data/market/bps_anomalies.csv` | 데이터 | 원본 이상값 기록 (월간>YTD 등). 원장 보조. **v0.3 추가** |
 | `data/market/soc_lag.csv` | 데이터 | 연×region×bucket 소요기간 |
 | `data/market/state_region.csv` | 데이터 | 주 → Census Region (정적 51행) |
 | `data/market/context_latest.json` | 데이터 | 전 CBSA 최신 context |
@@ -110,8 +112,10 @@
 - **보고분(rep) 열은 존재하지 않는다** (Phase 0 실측). 2004 샘플과 다름
 - 2~4유닛 저장 안 함. 원본 xls는 raw/에 보관
 - UNIQUE: (`period`, `cbsa_code`). 재파싱 시 스킵
-- 커버리지: 2024-01+ 약 929행(Metro+Micro) / 2019-11~2023-12 약 393행(Metro만). Micro는 2027-01 전까지 3년 기저선 불가 → `no_data`로 자연 처리
-- 무결성 assert: 1월 파일은 `u5_units == u5_units_ytd`; 그 외 `u5_units ≤ u5_units_ytd`
+- 커버리지 **[Phase 1 실측]**: 2019-11~2021-12 **368행**, 2022-01~2023-12 **384행**, 2024-01+ **921행**(2026-04·05만 922). Micro는 2027-01 전까지 3년 기저선 불가 → `no_data`로 자연 처리. 총 82파일 48,258행
+- 시트명이 연도별로 다름 **[Phase 1 실측]**: 2019-11~12 `Units`/`Valuation`, 2020-01~2023-12 및 2024-02+ `MSA Units`/`MSA Value`, 2024-01만 `CBSA Units`/`CBSA Value` → `_pick_sheet()`가 이름 끝부분으로 선택. 헤더 행·컬럼명은 전 기간 동일
+- 무결성 정책 **[v0.3 확정]**: 1월 파일은 `u5_units == u5_units_ytd`, 그 외 `u5_units ≤ u5_units_ytd`. 위반이 **전체 행의 1% 초과면 파서 오류로 raise**, 이하면 **원본 그대로 저장 + `bps_anomalies.csv` 기록**. 실측: 2026-05 파일 2행(Adrian MI 5>0, Kenosha WI 11>10)만 해당. 원장은 Census가 낸 값을 바꾸지 않는다
+- 2019-11~2021-12 파일에만 `Monthly Coverage Percent*` 열 존재 **[Phase 1 실측]** — 저장하지 않음. 2022 cutoff sample 전환으로 사라진 보고 커버리지 지표로 추정 [추정]. §8 C6
 
 ### 3.2 `data/market/soc_lag.csv`
 
@@ -341,7 +345,8 @@ def log_download(path: Path, rows: int) -> None:
 def collect_bps(end: tuple[int,int] | None = None) -> None:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     today = date.today()
-    end = end or ((today.year, today.month - 2) if today.month > 2 else (today.year - 1, today.month + 10))
+    # v0.3: 전월까지 시도. 미공표면 404로 스킵되고 다음 달 실행에서 잡힌다 (source_file 기준 멱등)
+    end = end or ((today.year, today.month - 1) if today.month > 1 else (today.year - 1, 12))
     parsed = set()
     if BPS_CSV.exists():
         parsed = set(pd.read_csv(BPS_CSV, dtype=str, usecols=["source_file"]).source_file)
@@ -385,13 +390,20 @@ def _parse_soc_file(path: Path, metric: str) -> pd.DataFrame:
 
 
 def collect_soc() -> None:
+    """v0.3: 원격 파일 sha256이 기존 raw와 같으면 재기록하지 않는다 (매달 빈 커밋 방지)."""
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    parts = []
+    parts, changed = [], False
     for k, url in SOC_URLS.items():
         dest = RAW_DIR / f"soc_{k}.xlsx"
-        if dest.exists(): dest.unlink()    # 연 1회 전체 갱신
-        download(url, dest)
+        r = requests.get(url, headers=HEADERS, timeout=30); r.raise_for_status()
+        new_sha = hashlib.sha256(r.content).hexdigest()
+        old_sha = hashlib.sha256(dest.read_bytes()).hexdigest() if dest.exists() else None
+        if new_sha != old_sha:
+            dest.write_bytes(r.content); changed = True
         parts.append(_parse_soc_file(dest, k))
+        time.sleep(1.0)
+    if not changed and SOC_CSV.exists():
+        print("SOC 변경 없음 — 스킵"); return
     long = pd.concat(parts)
     wide = long.pivot_table(index=["year","region","unit_bucket"], columns="metric", values="months").reset_index()
     wide = wide.rename(columns={"auth_to_start": "months_auth_to_start", "start_to_comp": "months_start_to_comp"})
@@ -700,7 +712,7 @@ jobs:
 name: Monthly Market Collect
 on:
   schedule:
-    - cron: "0 2 26 * *"   # 매월 26일 02:00 UTC = 11:00 KST. Census 월간 공표(18번째 근무일) 이후
+    - cron: "0 2 29 * *"   # v0.3: 매월 29일 02:00 UTC = 11:00 KST. 18번째 근무일이 26~27일인 달이 있어 여유 확보
   workflow_dispatch:
 concurrency: { group: monthly-market, cancel-in-progress: false }
 permissions: { contents: write }
@@ -797,6 +809,8 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 | as_of = 발행월−2 | 발행월 | BPS 공표 지연. 가용성 우선 |
 | unknown 근거 = 물량 하한 | 보고 비율 | 월간 파일에 보고분 열이 없음 (Phase 0 실측). 비율이 노이즈인 소규모 시장을 거르는 것이 목적이므로 물량 하한이 대체 가능 |
 | Legistar 미포함 | 포함 | Seattle만 응답. 별도 Plan |
+| 원본 이상값 저장+기록 | 행 삭제 / raise | 원장 원칙. 1% 임계로 파서 오류와 원본 이상을 구분 (v0.3) |
+| Columbia MO `low_volume` 유지 | 하한을 271 아래로 | 원하는 결과에 임계를 맞추지 않는다. 연 271유닛은 프로젝트 1건이 ratio를 0.7 흔드는 규모. Theory Sterling 수요 근거는 BPS가 아니라 IPEDS (v0.3) |
 
 ---
 
@@ -817,17 +831,19 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 - [x] 0.3 Actions 수동 실행 → 로그 전문 → **Plan v0.2** (완료 2026-10-15: 4 URL 200, 헤더명 탐색으로 전환, SOC 파서 확정, rep→volume floor)
 
 ### Phase 1 — 수집 (geo 무관)
-- [x] 1.1 `data/market/state_region.csv` 51행 — 커밋 `data: state→Census Region 정적 테이블`
-- [x] 1.2 `market_collect.py` (bps) + `tests/test_market_parse.py` + fixtures 2파일(202608, 202312) — 커밋 `feat: BPS 월간 CBSA 수집기`
-- [x] 1.3 로컬에서 `python market_collect.py bps` 백필 (2019-11~2026-08, 약 82파일) → `data/market/raw/`·`bps_cbsa.csv`·log 커밋 `data: BPS 백필 2019-11~2026-08`
+- [ ] 1.1 `data/market/state_region.csv` 51행 — 커밋 `data: state→Census Region 정적 테이블`
+- [ ] 1.2 `market_collect.py` (bps) + `tests/test_market_parse.py` + fixtures 2파일(202608, 202312) — 커밋 `feat: BPS 월간 CBSA 수집기`
+- [ ] 1.3 로컬에서 `python market_collect.py bps` 백필 (2019-11~2026-08, 약 82파일) → `data/market/raw/`·`bps_cbsa.csv`·log 커밋 `data: BPS 백필 2019-11~2026-08`
   - 검증: 2024+ 32파일 × ~929 + 2019-11~2023-12 50파일 × ~393 ≈ 49,400행, Atlanta 12060 82개월 전부 존재, 월간 ≤ YTD 전수, (period, cbsa) 중복 0
-- [x] 1.4 `market_collect.py` (soc) — 커밋 `feat: SOC 소요기간 수집기` + `data/market/soc_lag.csv`
+- [ ] 1.4 `market_collect.py` (soc) — 커밋 `feat: SOC 소요기간 수집기` + `data/market/soc_lag.csv`
   - 검증: 2025 South 2+ = 17.5, 20+ = 21.8 (assert 내장). 행수 = 연도(1971~2025 중 유효) × 5 region × 5 bucket
-- [x] 1.5 `monthly_market.yml` — 커밋 `ci: 월간 시장 데이터 수집 워크플로`
+- [ ] 1.5 `monthly_market.yml` — 커밋 `ci: 월간 시장 데이터 수집 워크플로`
 
 ### Phase 2 — 판정 (geo 무관)
+- [ ] 2.0 **수집기 보정** (Phase 1 피드백): (a) `collect_bps` 종료월 `month-2`→`month-1` (b) `collect_soc` sha256 멱등 (c) `monthly_market.yml` cron 26→29일 — 커밋 `fix: 수집기 종료월·SOC 멱등·cron 조정`
 - [ ] 2.1 `market_context.py` + `tests/test_market_context.py` — 커밋 `feat: 시장 상태 계산 (순수)`
-- [ ] 2.2 **임계값 보정**: 전 CBSA 2026-08 기준 (a) units_avg3y 분포 → VOLUME_FLOOR 확정 (하위 25% 지점 근방, 관심 7개 CBSA가 전부 ok인지 확인) (b) ok인 CBSA의 ratio 분포 → 상·하위 20% 지점으로 THRESH 확정 → Plan v0.3 기록
+- [ ] 2.2 **임계값 보정**: 전 CBSA 2026-08 기준 (a) units_avg3y 분포(분위수 10/25/50/75/90) → VOLUME_FLOOR 확정. 관심 7개 CBSA의 coverage 결과를 **기록**하되 **하한을 그들에 맞추지 않는다** (Columbia MO 271 → low_volume 예상, 그대로 둠) (b) ok인 CBSA의 ratio 분포 → 상·하위 20% 지점으로 THRESH 확정 → Plan v0.4 기록
+  - 사전 실측 (2026-08, 48개월 창): ATL 0.913 / DFW 0.912 / LA 1.461 / SEA 1.330 / DEN 0.847 / PHX 0.875 / Columbia MO 1.080(avg3y 271)
 - [ ] 2.3 `market_rules.py` + `tests/test_market_rules.py` — 커밋 `feat: 시장 맥락 규칙 S1~S3`
 - [ ] 2.4 `market_tagger.py` (geo 없을 때 context만) → `context_latest.json` — 커밋 `feat: 시장 context 덤프`
   - 검증: 관심 7개 CBSA의 coverage·ratio·flags를 표로 보고
@@ -844,7 +860,7 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 - [ ] 4.3 스크린샷 → 공모전 증빙 6번용 보관
 
 ### Phase 5 — 정리
-- [ ] 5.1 research_market.md §4.1.3 정정(보고분 열 부재 → 물량 하한) + §9 결정·실측 임계값을 문서 이력에 기록
+- [ ] 5.1 research_market.md 정정 3건: §4.1.3 보고분 열 부재→물량 하한 / §4.2.5 "South가 짧다"는 2+ 전체(17.5 vs West 20.6)에서만 성립하고 **20+ 구간은 South 21.8 ≈ West 22.6**, 최단은 Midwest 17.6 / §9 결정·실측 임계값
 - [ ] 5.2 공모전 Before/After 지표 1행 작성: "공급 판정 근거: 기사 건수 → BPS 5+유닛 허가 12m합 / 3y평균, 보고율 표기"
 
 ---
@@ -858,6 +874,7 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 | C3 | Phase 3을 geo보다 먼저 할 방법은 없다 — geo 착수 시점 확인 | — |
 | C4 | ~~SOC 파서~~ 확정됨 | — |
 | C5 | `metro_micro` 코드 의미(Atlanta=2, Aberdeen SD=5)를 Census 문서로 확인 — 2=Metro, 5=Micro 추정 [추정]. 화면 필터에 쓰기 전 확인 | Phase 4 전 확인 |
+| C6 | 2019-11~2021-12 파일의 `Monthly Coverage Percent*` 열 재파싱 여부 — 백필 구간 기저선 신뢰도 참고용. 현재 판정에는 미사용 | Phase 5 검토, 기본 보류 |
 
 ---
 
@@ -866,4 +883,5 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 | 버전 | 일자 | 변경 |
 |---|---|---|
 | v0.1 | 2026-10-15 | 최초 작성. research_market §9 기본안 전부 채택. geo Plan.md I1~I8 계승 + M1~M7 추가 |
+| v0.3 | 2026-10-15 | Phase 1 완료 반영. ① 시트명 연도별 차이(`_pick_sheet`) ② 행수 실측 368/384/921 ③ 이상값 정책 확정(1% 임계, `bps_anomalies.csv`) ④ Columbia MO avg3y 271 → `low_volume` 유지 결정, 2.2 문구를 "맞추지 않는다"로 수정 ⑤ SOC 20+ 지역 격차 실측(NE 25.7 / MW 17.6 / S 21.8 / W 22.6 / US 21.7) — research §4.2.5 Sun Belt 논거 정정 필요 ⑥ Phase 2.0 추가(종료월 month-1, SOC sha256 멱등, cron 29일) ⑦ C6 추가 |
 | v0.2 | 2026-10-15 | Phase 0 진단 반영. ① 4 URL 200 → 자동 수집 확정 ② BPS 월간 파일에 보고분(rep)·MONCOV 없음 → `rep_share`/`imputed` 폐기, `VOLUME_FLOOR`/`low_volume`로 교체 (M6 수정) ③ 2024+ 파일 `Metro /Micro Code` 열 삽입으로 열 위치 밀림 → 헤더명 탐색 ④ 2023 이전 Metro만 393행, 2024+ Metro+Micro 929행 ⑤ SOC 파서 확정(행4~5 2단 헤더, 열5~9, 검증값 South 2025 2+ 17.5 / 20+ 21.8) ⑥ 실측값 Atlanta 2026-08 u5=875/YTD 8,361, 2023-12 u5=440/YTD 14,227 |
