@@ -96,6 +96,7 @@ MARKET_REFERENCE = """\
 --- 참고: 지역 공급 판정(자동 규칙, 참고용) ---
 {labels}
 사용 규칙: (1) 1~3절에서 해당 지역 기사를 요약할 때 괄호 태그로만 붙인다. 예: "Hines가 Buckhead 312유닛 매입(ATL·평년)". (2) 4. 시사점에서는 이 라벨을 쓰지 말라 — 시사점은 기사 내용만 근거로 한다. (3) 라벨에서 수요·흡수·적합성·우선순위를 끌어내지 말라. 판정불가 지역은 라벨을 붙이지 말라. (4) 시장 데이터 표는 별도 자동 생성되므로 네가 쓰지 말라.
+라벨 표기는 위 표기 그대로(띄어쓰기 포함) 쓴다.
 """
 # "준공" 단독은 기사 요약의 "신규 준공 후" 같은 사실 서술까지 잡으므로 시장 추정치를 가리키는 표현만 본다
 MARKET_LEAK_TERMS = ("평년", "공급 급증", "공급 감소", "판정불가", "예상 준공", "준공 물량", "준공 예정")
@@ -218,7 +219,9 @@ def check_market_leakage(md: str) -> list[str]:
     for ln in lines[start + 1:end]:
         text = re.sub(r"^\s*(?:[-•*]|\d+\.)\s+", "", ln).strip()   # bullet 기호 제거
         for sent in re.split(r"(?<=[.!?。])\s+", text):
-            if sent and any(t in sent for t in MARKET_LEAK_TERMS):
+            # 띄어쓰기 변형("공급급증", "공급  급증")도 잡도록 양쪽 공백을 지우고 비교
+            flat = re.sub(r"\s+", "", sent)
+            if sent and any(re.sub(r"\s+", "", t) in flat for t in MARKET_LEAK_TERMS):
                 hits.append(sent)
     return hits
 
