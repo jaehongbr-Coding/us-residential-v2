@@ -11,7 +11,7 @@ import argparse, json, sqlite3, sys
 from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
-from market_context import compute, expected_completion, region_map, RULE_VERSION
+from market_context import compute, expected_completion, region_map, RULE_VERSION, WATCH
 from market_rules import judge
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -87,7 +87,9 @@ def dump_context(bps, soc, region_of, out_path: Path = OUT_JSON, market_db: Path
     names = bps[bps.period == as_of].set_index("cbsa_code").cbsa_name.to_dict()
     counts = _article_counts(market_db)
     out = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-           "as_of": as_of, "rule_version": RULE_VERSION, "cbsa": {}}
+           "as_of": as_of, "rule_version": RULE_VERSION,
+           "watch": [{"code": code, "short": short, "name": names.get(code, "")} for code, short in WATCH],
+           "cbsa": {}}
     for code in sorted(names):
         c = compute(code, as_of, bps, soc, region_of)
         m = bps[bps.cbsa_code == code].sort_values("period").tail(36)[["period","u5_units"]].to_dict("records")

@@ -960,7 +960,7 @@ index.html은 `articles.csv`, `archive_index.json`, `data/market/context_latest.
 - [x] 5.1 research_market.md §12 정정 섹션(본문 불변): 보고분 열 부재→물량 하한 / 20+ 구간 Sun Belt 이점 없음 / geo 완료 전제 오류 / 임계 확정 / relevance×flags 독립 / Columbia MO — 커밋 `docs: research_market 정정 섹션 추가 (Phase 0~4 실측)`
 - [x] 5.2 `CLAUDE.md` 갱신: 데이터 현황(10,249), 일일 파이프라인(collect→classify→geo→**market**→index), 시장 데이터 풀 절, docs/history 이동·트렌드 차트 삭제 — 커밋 `docs: CLAUDE.md 시장 데이터 풀 반영`
 - [x] 5.3 Plan_market v0.5 (이 문서, 코드 동기화) — 커밋 `docs: Plan_market v0.5 (Phase 0~4 완료, 코드 동기화)`
-- [ ] 5.4 `docs/contest_evidence.md` 공모전 Before/After·확산 가능성·커버리지 정직성 재료 — 커밋 `docs: 공모전 증빙 재료 초안`
+- [x] 5.4 `docs/contest_evidence.md` 공모전 Before/After·확산 가능성·커버리지 정직성 재료 — 커밋 `docs: 공모전 증빙 재료 초안` (cca9daa 완료)
 
 ### Phase 6 — 주간 리포트 시장 맥락 (§4.9)
 - [ ] 6.0 weekly_report.py 구조 조사 보고

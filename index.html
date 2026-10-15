@@ -1372,7 +1372,15 @@ if ('serviceWorker' in navigator) {
    📈 마켓워치 — data/market/context_latest.json 소비 (market_tagger.py 산출).
    화면은 계산하지 않고 읽기만 한다. 판정(flags)은 JSON 값을 그대로 표시.
    ══════════════════════════════════════════════════════════ */
+// 관심 CBSA 정본은 market_context.WATCH → context_latest.json "watch". 아래는 json에 watch가 없을 때의 폴백
 const MARKET_WATCH = ["12060","19100","31080","42660","19740","38060","17860"];
+
+function marketWatchList() {
+  if (marketData && Array.isArray(marketData.watch) && marketData.watch.length) {
+    return marketData.watch.map(w => ({ code: String(w.code), short: w.short || CBSA_SHORT[w.code] || w.code }));
+  }
+  return MARKET_WATCH.map(c => ({ code: c, short: CBSA_SHORT[c] || c }));
+}
 const MARKET_COV_LABEL = { ok: "판정 가능", low_volume: "물량 부족", no_data: "데이터 없음" };
 let marketData = null;
 let marketLoaded = false;
@@ -1393,7 +1401,7 @@ function loadMarketData() {
       document.getElementById("marketMeta").textContent =
         `기준월 ${data.as_of} · 규칙 ${data.rule_version} · 출처 Census BPS·SOC`;
       buildMarketSelect();
-      renderMarket("12060");
+      renderMarket(marketWatchList()[0].code);
     })
     .catch(err => {
       document.getElementById("marketSpinner").innerHTML =
@@ -1403,9 +1411,11 @@ function loadMarketData() {
 
 function buildMarketSelect() {
   const cb = marketData.cbsa;
-  const watch = MARKET_WATCH.filter(c => cb[c]).map(c =>
-    `<option value="${c}">${escHtml(cbsaShort(c, { [c]: cb[c].name }))} — ${escHtml(cb[c].name)}</option>`);
-  const rest = Object.keys(cb).filter(c => !MARKET_WATCH.includes(c))
+  const watchList = marketWatchList().filter(w => cb[w.code]);
+  const watchCodes = watchList.map(w => w.code);
+  const watch = watchList.map(w =>
+    `<option value="${w.code}">${escHtml(w.short)} — ${escHtml(cb[w.code].name)}</option>`);
+  const rest = Object.keys(cb).filter(c => !watchCodes.includes(c))
     .sort((a, b) => cb[a].name.localeCompare(cb[b].name))
     .map(c => `<option value="${c}">${escHtml(cb[c].name)}</option>`);
   document.getElementById("marketSelect").innerHTML =

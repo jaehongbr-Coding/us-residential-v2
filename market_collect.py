@@ -2,7 +2,7 @@
 런타임(tagger·화면)은 이 스크립트의 산출 파일만 읽는다 (M4).
 레이아웃은 Phase 0 진단(2026-10-15) 실측 기준."""
 from __future__ import annotations
-import csv, hashlib, re, sys, time
+import csv, hashlib, re, sys, time, warnings
 from datetime import date, datetime, timezone
 from pathlib import Path
 import pandas as pd
@@ -212,10 +212,14 @@ SOC_BUCKETS = {5: "2+", 6: "2-4", 7: "5-9", 8: "10-19", 9: "20+"}   # 열 인덱
 
 
 def _parse_soc_file(path: Path, metric: str) -> pd.DataFrame:
-    x = pd.ExcelFile(path, engine="openpyxl")
+    # Census xlsx의 머리말/꼬리말을 openpyxl이 못 읽어 시트마다 UserWarning을 낸다 — 데이터와 무관하므로 이 호출에서만 억제
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Cannot parse header or footer", category=UserWarning)
+        with pd.ExcelFile(path, engine="openpyxl") as x:
+            frames = {sheet: x.parse(sheet, header=None) for sheet in SOC_SHEETS}
     rows = []
     for sheet, region in SOC_SHEETS.items():
-        df = x.parse(sheet, header=None)
+        df = frames[sheet]
         # 행4 열5가 'Buildings with 2 units or more' 인지 확인 (레이아웃 가드)
         assert "2 units or more" in str(df.iat[4, 5]), f"{path.name}/{sheet}: 레이아웃 변경"
         for i in range(6, len(df)):

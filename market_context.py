@@ -11,6 +11,11 @@ BASE_YEARS       = 3       # 기저선 (Q1)
 VOLUME_FLOOR     = 1000
 LAG_BUCKET       = "20+"   # research_market §4.2.5
 
+# 관심 CBSA (화면·리포트 공용 정본). 판정 로직과 무관 — 표시 순서·약칭만 정의한다.
+# context_latest.json 최상위 "watch"로 내보내 index.html·weekly_report가 이 목록을 읽는다.
+WATCH = [("12060", "ATL"), ("19100", "DFW"), ("31080", "LA"), ("42660", "SEA"),
+         ("19740", "DEN"), ("38060", "PHX"), ("17860", "COMO")]
+
 
 @dataclass
 class MarketContext:
