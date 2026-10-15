@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import pandas as pd  # noqa: E402
 from market_collect import parse_bps  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures"
@@ -24,3 +25,10 @@ def test_2023_12_atlanta_old_layout():
     assert a.period == "2023-12" and a.u5_units == 440 and a.u5_units_ytd == 14227
     assert a.u5_value_k == 79211 and a.metro_micro == ""
     assert 380 <= len(df) <= 400
+
+
+def test_soc_south_2025():
+    s = pd.read_csv(ROOT / "data" / "market" / "soc_lag.csv")
+    r = s[(s.year == 2025) & (s.region == "South")].set_index("unit_bucket")
+    assert abs(r.loc["2+", "months_auth_to_comp"] - 17.5) < 0.05
+    assert abs(r.loc["20+", "months_auth_to_comp"] - 21.8) < 0.05
