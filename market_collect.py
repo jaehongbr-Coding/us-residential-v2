@@ -12,6 +12,7 @@ RAW_DIR   = Path("data/market/raw")
 BPS_CSV   = Path("data/market/bps_cbsa.csv")
 LOG_CSV   = Path("data/market/bps_download_log.csv")
 SOC_CSV   = Path("data/market/soc_lag.csv")
+ANOM_CSV  = Path("data/market/bps_anomalies.csv")
 BPS_BASE  = "https://www.census.gov/construction/bps/xls/"
 SOC_URLS  = {
     "auth_to_start": "https://www.census.gov/construction/nrc/xls/avg_authtostart_cust.xlsx",
@@ -90,10 +91,19 @@ def _sheet_table(raw: pd.DataFrame):
     return header, body
 
 
+def _pick_sheet(names: list[str], suffixes: tuple[str, ...]) -> str:
+    """시트명이 연도별로 다르다 (1.3 백필 실측): 2019-11~12 'Units'/'Valuation',
+    2020-01~2023-12·2024-02+ 'MSA Units'/'MSA Value', 2024-01 'CBSA Units'/'CBSA Value'."""
+    hits = [n for n in names if n.strip().endswith(suffixes)]
+    if len(hits) != 1:
+        raise ValueError(f"시트 {suffixes} 후보 {hits} (전체 {names})")
+    return hits[0]
+
+
 def parse_bps(path: Path) -> pd.DataFrame:
     x = pd.ExcelFile(path, engine="xlrd")
-    units = x.parse("MSA Units", header=None)
-    value = x.parse("MSA Value", header=None)
+    units = x.parse(_pick_sheet(x.sheet_names, ("Units",)), header=None)
+    value = x.parse(_pick_sheet(x.sheet_names, ("Value", "Valuation")), header=None)
     period = _find_period(units)
 
     hu, bu = _sheet_table(units)
@@ -124,13 +134,29 @@ def parse_bps(path: Path) -> pd.DataFrame:
     # 무결성 (Phase 0 실측 기반)
     if out.cbsa_code.duplicated().any():
         raise ValueError(f"{path.name}: CBSA 중복")
-    if period.endswith("-01"):
-        bad = out[out.u5_units != out.u5_units_ytd]
-    else:
-        bad = out[out.u5_units > out.u5_units_ytd]
-    if len(bad):
-        raise ValueError(f"{path.name}: 월간 > YTD {len(bad)}행 — 열 탐색 오류 의심")
+    # 원장 원칙: 원본 값은 고치지도 버리지도 않는다. 1% 초과면 열 탐색 오류로 보고 raise
+    viol = out[(out.u5_units != out.u5_units_ytd) if period.endswith("-01")
+               else (out.u5_units > out.u5_units_ytd)]
+    if len(viol) > max(1, int(len(out) * 0.01)):
+        raise ValueError(f"{path.name}: 월간>YTD {len(viol)}행 (>1%) — 열 탐색 오류 의심")
+    if len(viol):
+        _log_anomalies(viol, path.name, period)
+        print(f"  [ANOMALY] {path.name}: 월간>YTD {len(viol)}행 — 원본 그대로 저장, bps_anomalies.csv 기록")
     return out[BPS_COLS]
+
+
+def _log_anomalies(viol: pd.DataFrame, source_file: str, period: str) -> None:
+    """원장 보조 파일. Census 수정 파일이 나오면 대조용."""
+    exists = ANOM_CSV.exists()
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with ANOM_CSV.open("a", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        if not exists:
+            w.writerow(["period","cbsa_code","cbsa_name","u5_units","u5_units_ytd",
+                        "source_file","note","logged_at"])
+        for r in viol.itertuples(index=False):
+            w.writerow([period, r.cbsa_code, r.cbsa_name, r.u5_units, r.u5_units_ytd,
+                        source_file, "monthly_gt_ytd", now])
 
 
 def append_bps(df: pd.DataFrame) -> int:
