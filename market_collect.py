@@ -184,7 +184,8 @@ def log_download(path: Path, rows: int) -> None:
 def collect_bps(end: tuple[int,int] | None = None) -> None:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     today = date.today()
-    end = end or ((today.year, today.month - 2) if today.month > 2 else (today.year - 1, today.month + 10))
+    # v0.3: 전월까지 시도. 미공표면 404로 스킵되고 다음 달 실행에서 잡힌다 (source_file 기준 멱등)
+    end = end or ((today.year, today.month - 1) if today.month > 1 else (today.year - 1, 12))
     parsed = set()
     if BPS_CSV.exists():
         parsed = set(pd.read_csv(BPS_CSV, dtype=str, usecols=["source_file"]).source_file)
@@ -228,13 +229,20 @@ def _parse_soc_file(path: Path, metric: str) -> pd.DataFrame:
 
 
 def collect_soc() -> None:
+    """v0.3: 원격 파일 sha256이 기존 raw와 같으면 재기록하지 않는다 (매달 빈 커밋 방지)."""
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    parts = []
+    parts, changed = [], False
     for k, url in SOC_URLS.items():
         dest = RAW_DIR / f"soc_{k}.xlsx"
-        if dest.exists(): dest.unlink()    # 연 1회 전체 갱신
-        download(url, dest)
+        r = requests.get(url, headers=HEADERS, timeout=30); r.raise_for_status()
+        new_sha = hashlib.sha256(r.content).hexdigest()
+        old_sha = hashlib.sha256(dest.read_bytes()).hexdigest() if dest.exists() else None
+        if new_sha != old_sha:
+            dest.write_bytes(r.content); changed = True
         parts.append(_parse_soc_file(dest, k))
+        time.sleep(1.0)
+    if not changed and SOC_CSV.exists():
+        print("SOC 변경 없음 — 스킵"); return
     long = pd.concat(parts)
     wide = long.pivot_table(index=["year","region","unit_bucket"], columns="metric", values="months").reset_index()
     wide = wide.rename(columns={"auth_to_start": "months_auth_to_start", "start_to_comp": "months_start_to_comp"})
