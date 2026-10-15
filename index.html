@@ -1001,7 +1001,7 @@ function mkKind(flags) {
 function cbsaShort(cbsa, titles) {
   if (CBSA_SHORT[cbsa]) return CBSA_SHORT[cbsa];
   const t = (titles || {})[cbsa];
-  return t ? t.split(",")[0].trim().split(/\s+/)[0] : cbsa;
+  return t ? t.split(",")[0].split("-")[0].trim() : cbsa;   // "Orlando-Kissimmee-Sanford, FL" → "Orlando"
 }
 
 function mkChip(cbsa, flags, ratio, cov, titles, withShort = true) {
@@ -1332,7 +1332,7 @@ function loadMarketData() {
 function buildMarketSelect() {
   const cb = marketData.cbsa;
   const watch = MARKET_WATCH.filter(c => cb[c]).map(c =>
-    `<option value="${c}">${CBSA_SHORT[c]} — ${escHtml(cb[c].name)}</option>`);
+    `<option value="${c}">${escHtml(cbsaShort(c, { [c]: cb[c].name }))} — ${escHtml(cb[c].name)}</option>`);
   const rest = Object.keys(cb).filter(c => !MARKET_WATCH.includes(c))
     .sort((a, b) => cb[a].name.localeCompare(cb[b].name))
     .map(c => `<option value="${c}">${escHtml(cb[c].name)}</option>`);
