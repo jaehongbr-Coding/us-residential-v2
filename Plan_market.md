@@ -1,6 +1,6 @@
 # Plan_market.md — The Brief 시장 데이터 풀 + 시장 맥락 판정 구현 계획
 
-> 버전 v0.5 (2026-10-15) · 근거: `research_market.md` v0.1 + Phase 0·1 실측 + **2026-10-15 저장소 구조 조사** · 선행: `CLAUDE.md` (현 구조 정본)
+> 버전 v0.6 (2026-10-15) · 근거: `research_market.md` v0.1 + Phase 0·1 실측 + **2026-10-15 저장소 구조 조사** · 선행: `CLAUDE.md` (현 구조 정본)
 > **v0.5: Phase 0~4 완료. 실측 확정값과 코드 동기화.** §4.1 코드 블록은 커밋된 market_collect.py와 동일, §4.2·§4.3은 상수·로직이 동일하다 — 불일치 시 코드가 정본.
 > ⚠️ v0.4 핵심: v0.1~v0.3이 가정한 `geo_tags.csv`·`articles.csv` 기사 우주가 **틀렸음**. 실제는 원장 `archive/*.csv` 10,249건 + 렌즈 SQLite 3개(`labels.db`·`geo_tags.db`·`seen_index.db`) + 조인 산출물 `archive_index.json`. geo는 **완료 상태**(7,099→10,249건 백필, Haiku). Phase 2·3·4를 실제 구조에 맞춰 재작성.
 > ⚠️ v0.2 핵심 변경: BPS 월간 파일에 보고분/대체추정 분리가 **없음**이 확인됨 → `rep_share` 기반 unknown 규칙을 **물량 하한(volume floor)** 으로 교체. 열 위치 고정 → 헤더명 탐색으로 교체. SOC 파서 확정.
@@ -878,6 +878,17 @@ index.html은 `articles.csv`, `archive_index.json`, `data/market/context_latest.
 
 - I6 유지: 아카이브 필터에 CBSA·flag 필터를 추가하지 않았다. `filters.market_flags`는 데이터에만 있다.
 
+### 4.9 Phase 6 — 주간 리포트 시장 맥락 — v0.6
+
+원칙: **판정은 Python, 서술은 LLM.** 시장 섹션은 `context_latest.json`만 읽는다(네트워크·DB 계산 없음, M4). M9: weekly_report.py 기존 섹션의 프롬프트·출력 구조는 변경하지 않고 시장 섹션은 추가만 한다. context_latest.json이 없거나 깨져도 리포트는 정상 생성된다.
+
+- **6.0 조사**: weekly_report.py의 섹션 조립 방식, LLM 호출 구조(프롬프트 템플릿 위치), md→docx 변환 방식(어떤 라이브러리, 표 지원 여부), 실행 인자(--period, --export). §7의 5.4 항목이 무엇인지 확인.
+- **6.1 WATCH 정본 단일화**: WATCH 7(12060 ATL, 19100 DFW, 31080 LA, 42660 SEA, 19740 DEN, 38060 PHX, 17860 COMO)을 market_context.py 한 곳에 두고 dump_context가 context_latest.json 최상위에 `"watch": [{"code","short","name"}]`로 내보낸다. index.html은 하드코딩된 WATCH 대신 json의 watch를 읽는다(json에 watch가 없으면 기존 하드코딩으로 폴백).
+- **6.2 시장 섹션 결정적 생성**: market_report.py(신규, 순수 함수) — context_latest.json을 읽어 WATCH 7 각각에 대해 {12개월 허가, 3년 평균, 비율, 판정 라벨, 2027 예상 준공 합계}를 markdown 표로 만든다. coverage가 ok가 아닌 CBSA는 수치 열을 비우고 판정 열에 "판정불가(물량 부족)" 또는 "판정불가(데이터 없음)"만 적는다. 표 아래 각주: 기준월, 규칙 버전, 출처(Census BPS·SOC), "준공 예상은 SOC 지역 평균 lag 적용 추정치 — 미착공·취소 미반영". 파일이 없거나 파싱 실패 시 "시장 데이터 없음(context_latest.json 미확인)" 한 줄을 반환하고 예외를 올리지 않는다.
+- **6.3 LLM 참조 전달**: 6.2의 표를 기존 프롬프트 끝에 참조 블록으로 추가. 지시문: "아래 시장 데이터는 참고용이다. 기사 요약에서 해당 CBSA를 언급할 때 판정 라벨(평년/공급 급증/공급 감소)을 인용할 수 있다. 수치의 원인·인과·전망을 서술하지 말라. 판정불가 CBSA는 시장 수치를 언급하지 말라. 판정 라벨과 기사 관련성 등급을 합쳐 새 등급을 만들지 말라(M1)."
+- **6.4 테스트**: tests/test_market_report.py — (a) 정상 json → 7행 표, 판정불가 행은 수치 비어 있음 (b) 파일 없음 → "시장 데이터 없음" 1줄, 예외 없음 (c) json 깨짐 → 동일 (d) watch 키 없음 → 기존 WATCH 상수로 폴백.
+- **6.5 수동 실행**: workflow_dispatch로 weekly_report 1회 실행 → reports/의 md·docx에서 시장 섹션 위치·표 렌더링 확인 → 10/19 정규 실행.
+
 ## 5. 트레이드오프 총괄
 
 | 선택 | 대안 | 채택 이유 |
@@ -951,6 +962,14 @@ index.html은 `articles.csv`, `archive_index.json`, `data/market/context_latest.
 - [x] 5.3 Plan_market v0.5 (이 문서, 코드 동기화) — 커밋 `docs: Plan_market v0.5 (Phase 0~4 완료, 코드 동기화)`
 - [ ] 5.4 `docs/contest_evidence.md` 공모전 Before/After·확산 가능성·커버리지 정직성 재료 — 커밋 `docs: 공모전 증빙 재료 초안`
 
+### Phase 6 — 주간 리포트 시장 맥락 (§4.9)
+- [ ] 6.0 weekly_report.py 구조 조사 보고
+- [ ] 6.1 WATCH 정본 단일화 (market_context.py → context_latest.json watch → index.html)
+- [ ] 6.2 market_report.py 시장 섹션 생성 + 리포트 삽입
+- [ ] 6.3 LLM 프롬프트 참조 블록
+- [ ] 6.4 테스트 4건
+- [ ] 6.5 수동 실행 검증 → 10/19 정규 실행 확인
+
 ---
 
 ## 8. 검토 요청 (사용자 확인)
@@ -975,6 +994,7 @@ index.html은 `articles.csv`, `archive_index.json`, `data/market/context_latest.
 | 버전 | 일자 | 변경 |
 |---|---|---|
 | v0.1 | 2026-10-15 | 최초 작성. research_market §9 기본안 전부 채택. geo Plan.md I1~I8 계승 + M1~M7 추가 |
+| v0.6 | 2026-10-15 | Phase 6 주간 리포트 시장 맥락 추가 (§4.9, §7 Phase 6 6.0~6.5, M9) |
 | v0.5 | 2026-10-15 | **Phase 0~4 완료, 코드 동기화.** ① §4.1 코드 블록을 커밋된 market_collect.py로 교체(_pick_sheet, 이상값 1% 정책·bps_anomalies.csv, 종료월 month-1, SOC sha256 멱등) ② VOLUME_FLOOR 1000·THRESH 1.25/0.75 실측 확정 ③ §4.8 실제 구현(제목 셀 mk-row, 세 번째 페이지 탭, 모바일 x축 6개월, service-worker Network First, 약칭 하이픈 규칙) ④ §8 C2 확정·C5 정정·C7 해소·C9 추가 ⑤ §7 Phase 0·1 체크 누락 복구, Phase 5 재작성(공모전 항목 5.4로) |
 | v0.4 | 2026-10-15 | **저장소 구조 조사 반영.** ① geo는 완료(geo_tags.db 10,249행) — Phase 3 전제 충족 ② 기사 우주를 articles.csv→archive/ 원장으로 ③ 렌즈 저장을 csv→`market_flags.db`(M8) + `market_store.py` ④ 조인은 `build_archive_index.py`(mk 필드) ⑤ 적용 조건에 confidence 필터 추가 ⑥ index.html 트렌드 차트 부재 확인 → 마켓워치 신규 섹션 + Chart.js 재도입 ⑦ daily 스텝 위치 geo 뒤·index 앞 ⑧ C3 해소, C7·C8 추가 |
 | v0.3 | 2026-10-15 | Phase 1 완료 반영. ① 시트명 연도별 차이(`_pick_sheet`) ② 행수 실측 368/384/921 ③ 이상값 정책 확정(1% 임계, `bps_anomalies.csv`) ④ Columbia MO avg3y 271 → `low_volume` 유지 결정, 2.2 문구를 "맞추지 않는다"로 수정 ⑤ SOC 20+ 지역 격차 실측(NE 25.7 / MW 17.6 / S 21.8 / W 22.6 / US 21.7) — research §4.2.5 Sun Belt 논거 정정 필요 ⑥ Phase 2.0 추가(종료월 month-1, SOC sha256 멱등, cron 29일) ⑦ C6 추가 |
