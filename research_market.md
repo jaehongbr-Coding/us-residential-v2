@@ -355,3 +355,37 @@ tests/test_market_rules.py
 - Census HVS 분기 공실률: https://www.census.gov/housing/hvs/data/rates.html
 - Legistar Web API (Seattle 응답 확인): https://webapi.legistar.com/v1/seattle/matters
 - IRS SOI Migration 2021–2022: https://www.irs.gov/node/136131
+
+---
+
+## 12. 정정 (2026-10-15, Phase 0~4 실측)
+
+> 본문(§0~§11)은 작성 당시 기록으로 남기고 고치지 않는다. 아래가 실측으로 바뀐 사실이다. 구현 정본은 `Plan_market.md` v0.5와 커밋된 코드.
+
+**12.1 §4.1.3 "보고분/대체추정 분리" — 틀림.**
+월간 CBSA 파일(`cbsamonthly_*`, `msamonthly_*`)에는 `rep` 열도 `MONCOV` 플래그도 없다. 열 구조 근거로 쓴 2004년 샘플(`ma0401y.txt`)과 현행 월간 파일이 다르다. 따라서 "보고 비율이 낮으면 unknown" 규칙은 성립하지 않고, unknown 근거를 **물량 하한**(3년 평균 연 5+유닛 1,000 미만 → `low_volume`)으로 교체했다. 참고로 2019-11~2021-12 파일에만 `Monthly Coverage Percent*` 열이 있고 2022-01부터 사라진다 — 2022 cutoff sample 전환과 같은 시점이다 [추정]. 이 열은 저장하지 않는다.
+
+**12.2 §4.2.5 "South가 짧다" — 2+ 전체에서만 성립.**
+2025년 허가→준공 기준, 2+ 전체는 South 17.5 vs West 20.6개월로 South가 짧다. 그러나 우리 상품 구간인 **20+유닛**은 South 21.8 ≈ West 22.6이고, 최단은 Midwest 17.6, 최장은 Northeast 25.7개월이다(US 21.7). **20+ 구간에서는 Sun Belt 공사기간 이점이 없다.**
+
+**12.3 §7 geo 의존성 — 전제 오류.**
+geo 태깅은 2026-09에 이미 완료돼 있었다(`geo_tags.db` 10,249행, Stage A Haiku 4.5 + 결정론적 리졸버). 이 문서 작성 시점(10-15 오전)의 "geo 미착수" 전제는 7주 전 인수인계 문서를 근거로 한 오류다. 실제 geo 산출물은 `geo_tags.csv`가 아니라 SQLite 사이드카 `geo_tags.db`이며, market 렌즈도 같은 관례(`market_flags.db`)를 따랐다.
+
+**12.4 임계 확정 (2026-08 as_of, 전 CBSA 실측).**
+- `VOLUME_FLOOR = 1,000` — 판정 가능 80 CBSA, ratio 분포 p10~p90 = 0.64~1.46. 하한 300에서는 양극단(College Station 5.13, Flagstaff 0.00 등)이 프로젝트 1~2건 노이즈였다
+- `THRESH = surge 1.25 / drought 0.75` — 하한 1,000 기준 p80 1.256 / p20 0.742를 반올림
+- 2026-08 기준 전국 ratio 중앙값 **0.91** — 기저 3년(2022-09~2025-08)에 2021~22 허가 급증기의 여파가 포함돼 1 미만이 정상 상태다. 화면 고정 문구에 명시
+
+**12.5 woomi_relevance × flags는 독립이다 — 합산하지 않은 설계의 데이터 근거.**
+coverage=ok 3,995행(원장 10,249건 중 판정 가능) 교차표:
+
+| woomi_relevance | [] | supply_drought | supply_surge | n |
+|---|---|---|---|---|
+| 낮음 | 58.6% | 15.7% | 25.6% | 2,624 |
+| 보통 | 59.9% | 14.3% | 25.8% | 840 |
+| 높음 | 58.9% | 16.4% | 24.7% | 531 |
+
+세 행의 분포가 사실상 같다. LLM 관련성(기사 텍스트)과 시장 맥락(공급 데이터)은 서로 다른 정보를 담고 있으며, 한쪽으로 다른 쪽을 대신할 수 없다. 두 열을 합산 점수로 만들었다면 이 독립성이 숨는다 (M1).
+
+**12.6 Columbia MO — 하한을 맞추지 않음.**
+3년 평균 271유닛/년 → `low_volume` → `unknown`. 관심 7개 CBSA 중 유일한 판정 불가지만, 하한을 이 시장에 맞춰 낮추지 않았다. 낮추면 전국적으로 노이즈 판정이 늘어난다(하한 300 → 판정 169 CBSA, 극단값 다수). 판정 불가를 판정 불가로 표시하는 것이 원칙 ②(모르면 unknown)다.
