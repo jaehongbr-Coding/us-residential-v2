@@ -229,7 +229,21 @@ def generate_report(articles: list[dict], period: str) -> str:
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
     )
-    return response.content[0].text.strip()
+    report = response.content[0].text.strip()
+    if period == "weekly":
+        report += "\n\n" + _market_section()
+    return report
+
+
+def _market_section() -> str:
+    """주간 리포트 끝에 덧붙이는 시장 데이터(공급) 섹션 — Python 결정적 생성 (Plan_market §4.9).
+    LLM이 쓴 4개 섹션은 건드리지 않는다. 어떤 실패도 리포트 생성을 막지 않는다 (M9)."""
+    try:
+        from market_report import build_market_section
+        return build_market_section()
+    except Exception as e:
+        print(f"[WARN] 시장 데이터 섹션 생략: {type(e).__name__}: {e}")
+        return "## 시장 데이터(공급) — WATCH 7\n\n시장 데이터 없음(context_latest.json 미확인)\n"
 
 
 # ------------------------------------------------------------------
@@ -268,6 +282,32 @@ def save_report(content: str, period: str) -> str:
 def _strip_md_bold(text: str) -> str:
     """**bold** 마크다운을 일반 텍스트로 변환 (run 분리 전 단순 제거)."""
     return re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+
+
+_MD_TABLE_SEP = re.compile(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?$")
+
+
+def _parse_md_tables(lines: list[str]) -> tuple[dict, set]:
+    """'|'로 시작하는 연속 줄 블록을 표로 파싱한다.
+    반환: ({블록 첫 줄 인덱스: [[셀, …], …]}, 표로 소비된 줄 인덱스 집합).
+    구분선(|---|)은 건너뛴다. 셀 수가 맞지 않거나 헤더+1행 미만이면 표로 보지 않는다
+    → 해당 줄은 기존 '일반 텍스트' 분기로 그대로 출력된다 (폴백)."""
+    blocks, consumed = {}, set()
+    i = 0
+    while i < len(lines):
+        if not lines[i].strip().startswith("|"):
+            i += 1
+            continue
+        j = i
+        while j < len(lines) and lines[j].strip().startswith("|"):
+            j += 1
+        rows = [[c.strip() for c in ln.strip().strip("|").split("|")]
+                for ln in lines[i:j] if not _MD_TABLE_SEP.match(ln.strip())]
+        if len(rows) >= 2 and len({len(r) for r in rows}) == 1:
+            blocks[i] = rows
+            consumed.update(range(i, j))
+        i = j
+    return blocks, consumed
 
 
 def save_report_docx(md_content: str, period: str) -> str:
@@ -411,8 +451,23 @@ def save_report_docx(md_content: str, period: str) -> str:
     has_frontmatter = bool(lines) and lines[0].strip() == "---"
     in_frontmatter = has_frontmatter
     frontmatter_count = 1 if has_frontmatter else 0
+    table_blocks, table_lines = _parse_md_tables(lines)
 
-    for line in lines:
+    def _add_md_table(rows):
+        """markdown 표 → docx 표. 첫 행은 헤더(굵게). 실패 시 False (호출부가 텍스트로 폴백)."""
+        try:
+            tbl = doc.add_table(rows=len(rows), cols=len(rows[0]))
+            tbl.style = "Table Grid"
+            for ri, cells in enumerate(rows):
+                for ci, text in enumerate(cells):
+                    cp = tbl.cell(ri, ci).paragraphs[0]
+                    _run(cp, _strip_md_bold(text), size_pt=9, bold=(ri == 0))
+            return True
+        except Exception as e:
+            print(f"[WARN] docx 표 변환 실패 — 텍스트로 출력: {type(e).__name__}: {e}")
+            return False
+
+    for idx, line in enumerate(lines):
         if has_frontmatter and line.strip() == "---" and frontmatter_count < 2:
             frontmatter_count += 1
             in_frontmatter = frontmatter_count < 2
@@ -460,6 +515,16 @@ def save_report_docx(md_content: str, period: str) -> str:
         # 수평선 (---)
         elif line.strip() == "---":
             _heading_border(_para(doc))
+
+        # markdown 표 블록 — 블록 첫 줄에서 표를 그리고 나머지 줄은 건너뛴다.
+        # 변환 실패 시 블록의 원문 줄을 기존 일반 텍스트와 같은 방식으로 출력한다.
+        elif idx in table_lines:
+            if idx in table_blocks and not _add_md_table(table_blocks[idx]):
+                end = idx
+                while end in table_lines:
+                    end += 1
+                for raw in lines[idx:end]:
+                    _add_bold_runs(_para(doc), raw.strip(), size_pt=10)
 
         # 일반 텍스트
         elif line.strip():
