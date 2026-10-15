@@ -182,6 +182,14 @@
     .archive-sort-row { font-size: 12px; color: #666; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
     .archive-sort-row select { padding: 4px 8px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; }
 
+    /* ── 시장 맥락 칩 (표시 전용, 필터 .chip 과 별개) ── */
+    .mk-row { margin-top:3px; display:flex; flex-wrap:wrap; gap:4px; }
+    .mk-chip { font-size:10px; line-height:16px; padding:0 6px; border-radius:8px; border:1px solid; white-space:nowrap; }
+    .mk-flat    { background:#eee;    border-color:#ddd;    color:#555; }
+    .mk-unknown { background:#fff;    border-color:#999;    color:#888; border-style:dashed; }
+    .mk-surge   { background:#fff4d6; border-color:#f4b400; color:#6b4e00; }
+    .mk-drought { background:#e8eef5; border-color:#1B3A5C; color:#1B3A5C; }
+
     .title-link {
       color: #1a73e8;
       text-decoration: none;
@@ -932,6 +940,40 @@ function diagnoseZeroArchiveResults() {
   return `<div>0건입니다. 필터를 하나씩 빼보면:</div><ul>${lines.join("")}</ul>`;
 }
 
+/* ── 시장 맥락 칩 (market_flags.db → archive_index.json records[].mk) ──
+   rel(관련성)과 나란히 보여줄 뿐, 합산·정렬·필터에 쓰지 않는다 (M1·I6). */
+const MK_LABEL = { flat: "평년", unknown: "판정불가", surge: "공급 급증", drought: "공급 감소" };
+const CBSA_SHORT = { "12060":"ATL","19100":"DFW","31080":"LA","42660":"SEA","19740":"DEN","38060":"PHX","17860":"COMO" };
+
+function mkKind(flags) {
+  const fs = (flags || "").split("|").filter(Boolean);
+  if (!fs.length) return "flat";
+  if (fs.includes("unknown")) return "unknown";
+  if (fs.includes("supply_surge")) return "surge";
+  if (fs.includes("supply_drought")) return "drought";
+  return "flat";
+}
+
+function cbsaShort(cbsa, titles) {
+  if (CBSA_SHORT[cbsa]) return CBSA_SHORT[cbsa];
+  const t = (titles || {})[cbsa];
+  return t ? t.split(",")[0].trim().split(/\s+/)[0] : cbsa;
+}
+
+function mkChip(cbsa, flags, ratio, cov, titles, withShort = true) {
+  const kind = mkKind(flags);
+  const label = MK_LABEL[kind] + (withShort ? " · " + cbsaShort(cbsa, titles) : "");
+  const r = cov === "ok" && typeof ratio === "number" ? ratio.toFixed(2) : "—";
+  const tip = `${(titles || {})[cbsa] ?? cbsa} · BPS 5+유닛 12개월합/3년평균 ${r} · 발행월 기준`;
+  return `<span class="mk-chip mk-${kind}" title="${escHtml(tip)}">${escHtml(label)}</span>`;
+}
+
+function buildMkRow(r) {
+  if (!r.mk || !r.mk.length) return "";
+  const titles = archiveData ? archiveData.cbsa_titles : {};
+  return `<div class="mk-row">${r.mk.map(([c, f, ratio, cov]) => mkChip(c, f, ratio, cov, titles)).join("")}</div>`;
+}
+
 function buildArchiveTable(rows) {
   if (!rows.length) return '<p class="empty-msg">조건에 맞는 기사가 없습니다</p>';
   const trs = rows.map(r => {
@@ -942,7 +984,7 @@ function buildArchiveTable(rows) {
       <td class="col-title">
         <a class="title-link" href="${escHtml(r.u)}" target="_blank" rel="noopener">
           ${star}${escHtml(r.t)}
-        </a>
+        </a>${buildMkRow(r)}
       </td>
       <td class="col-sector">${escHtml(r.sec)}</td>
       <td class="col-region">${escHtml(region)}</td>
