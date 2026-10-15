@@ -30,3 +30,7 @@ archive_bak*/
 
 # Claude Code 로컬 프로젝트 설정
 .claude/
+
+# 로컬 백업·임시 분석 파일 (삭제하지 않고 보관만)
+articles_backup.csv
+tmp_*
