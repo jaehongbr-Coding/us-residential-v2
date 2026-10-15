@@ -817,13 +817,13 @@ const WATCH = ["12060","19100","31080","42660","19740","38060","17860"]; // ATL 
 - [x] 0.3 Actions 수동 실행 → 로그 전문 → **Plan v0.2** (완료 2026-10-15: 4 URL 200, 헤더명 탐색으로 전환, SOC 파서 확정, rep→volume floor)
 
 ### Phase 1 — 수집 (geo 무관)
-- [ ] 1.1 `data/market/state_region.csv` 51행 — 커밋 `data: state→Census Region 정적 테이블`
-- [ ] 1.2 `market_collect.py` (bps) + `tests/test_market_parse.py` + fixtures 2파일(202608, 202312) — 커밋 `feat: BPS 월간 CBSA 수집기`
-- [ ] 1.3 로컬에서 `python market_collect.py bps` 백필 (2019-11~2026-08, 약 82파일) → `data/market/raw/`·`bps_cbsa.csv`·log 커밋 `data: BPS 백필 2019-11~2026-08`
+- [x] 1.1 `data/market/state_region.csv` 51행 — 커밋 `data: state→Census Region 정적 테이블`
+- [x] 1.2 `market_collect.py` (bps) + `tests/test_market_parse.py` + fixtures 2파일(202608, 202312) — 커밋 `feat: BPS 월간 CBSA 수집기`
+- [x] 1.3 로컬에서 `python market_collect.py bps` 백필 (2019-11~2026-08, 약 82파일) → `data/market/raw/`·`bps_cbsa.csv`·log 커밋 `data: BPS 백필 2019-11~2026-08`
   - 검증: 2024+ 32파일 × ~929 + 2019-11~2023-12 50파일 × ~393 ≈ 49,400행, Atlanta 12060 82개월 전부 존재, 월간 ≤ YTD 전수, (period, cbsa) 중복 0
-- [ ] 1.4 `market_collect.py` (soc) — 커밋 `feat: SOC 소요기간 수집기` + `data/market/soc_lag.csv`
+- [x] 1.4 `market_collect.py` (soc) — 커밋 `feat: SOC 소요기간 수집기` + `data/market/soc_lag.csv`
   - 검증: 2025 South 2+ = 17.5, 20+ = 21.8 (assert 내장). 행수 = 연도(1971~2025 중 유효) × 5 region × 5 bucket
-- [ ] 1.5 `monthly_market.yml` — 커밋 `ci: 월간 시장 데이터 수집 워크플로`
+- [x] 1.5 `monthly_market.yml` — 커밋 `ci: 월간 시장 데이터 수집 워크플로`
 
 ### Phase 2 — 판정 (geo 무관)
 - [ ] 2.1 `market_context.py` + `tests/test_market_context.py` — 커밋 `feat: 시장 상태 계산 (순수)`
