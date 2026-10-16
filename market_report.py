@@ -89,16 +89,17 @@ def build_market_section(context_path: str = "data/market/context_latest.json") 
             if c.get("coverage") == "ok":
                 ratio = c.get("ratio_12m_vs_3y")
                 cells = [_num(c.get("units_12m")), _num(c.get("units_avg3y")),
-                         f"{ratio:.2f}" if isinstance(ratio, (int, float)) else "—", verdict, _completion(c)]
+                         f"{round(ratio * 100)}%" if isinstance(ratio, (int, float)) else "—", verdict, _completion(c)]
             else:
                 cells = ["—", "—", "—", verdict, "—"]
             rows.append(f"| {region} | " + " | ".join(cells) + " |")
     except Exception:   # 파일 없음·JSON 깨짐·필수 키 없음 — 리포트는 계속 생성돼야 한다
         return NO_DATA
 
-    head = (f"| 지역 | 12개월 허가(5+유닛) | 3년 평균 | 비율 | 판정 | {COMPLETION_YEAR} 예상 준공 |\n"
+    # 헤더·표기는 마켓워치 타일과 통일 (2026-10-16)
+    head = (f"| 지역 | 최근 12개월 건축허가(5유닛 이상) | 3년 평균 | 평균 대비 | 판정 | {COMPLETION_YEAR} 예상 준공 |\n"
             "|---|---|---|---|---|---|")
     foot = (f"기준월 {as_of} · 규칙 {rule_version} · 출처 Census BPS·SOC\n\n"
             "준공 예상은 SOC 지역 평균 lag(20+유닛) 적용 추정치 — 미착공·취소 미반영. "
-            "판정불가는 3년 평균 1,000유닛/년 미만 또는 데이터 없음.")
+            f"{EXCLUDED}는 3년 평균 1,000유닛/년 미만 또는 데이터 없음.")
     return f"{SECTION_TITLE}\n\n{head}\n" + "\n".join(rows) + f"\n\n{foot}\n"

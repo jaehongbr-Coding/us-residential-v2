@@ -24,6 +24,10 @@ def test_real_context_seven_rows_and_low_volume():
     como = next(r for r in rows if r.startswith("| COMO"))
     assert [c.strip() for c in como.strip("|").split("|")][1:] == ["—", "—", "—", "판정 제외(물량 부족)", "—"]
     assert "기준월 " in md and "출처 Census BPS·SOC" in md and "미착공·취소 미반영" in md
+    assert "| 지역 | 최근 12개월 건축허가(5유닛 이상) | 3년 평균 | 평균 대비 | 판정 | 2027 예상 준공 |" in md
+    assert "판정 제외는 3년 평균 1,000유닛/년 미만 또는 데이터 없음." in md
+    atl = [c.strip() for c in next(r for r in rows if r.startswith("| ATL")).strip("|").split("|")]
+    assert atl[3] == "91%" and atl[4] == "평균 수준"   # 비율은 % 정수 (0.913 → 91%)
 
 
 def test_missing_file_no_exception(tmp_path):
