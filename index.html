@@ -1058,7 +1058,10 @@ function diagnoseZeroArchiveResults() {
 
 /* ── 시장 맥락 칩 (market_flags.db → archive_index.json records[].mk) ──
    rel(관련성)과 나란히 보여줄 뿐, 합산·정렬·필터에 쓰지 않는다 (M1·I6). */
-const MK_LABEL = { flat: "평년", unknown: "판정불가", surge: "공급 급증", drought: "공급 감소" };
+// 판정 라벨 — 정본은 market_rules.LABELS_KO. 이 한 줄은 tests/test_market_report.py가 정본과 같은지 검사한다
+// (아카이브 칩은 context json을 읽지 않으므로 내장 맵을 쓰고, 마켓워치는 json "labels"를 우선한다)
+const LABELS_KO = {"flat": "평균 수준", "supply_surge": "허가 급증", "supply_drought": "허가 급감", "unknown": "판정 제외"};
+const MK_KIND_RULE = { flat: "flat", unknown: "unknown", surge: "supply_surge", drought: "supply_drought" };
 const CBSA_SHORT = { "12060":"ATL","19100":"DFW","31080":"LA","42660":"SEA","19740":"DEN","38060":"PHX","17860":"COMO" };
 
 function mkKind(flags) {
@@ -1076,9 +1079,9 @@ function cbsaShort(cbsa, titles) {
   return t ? t.split(",")[0].split("-")[0].trim() : cbsa;   // "Orlando-Kissimmee-Sanford, FL" → "Orlando"
 }
 
-function mkChip(cbsa, flags, ratio, cov, titles, withShort = true) {
+function mkChip(cbsa, flags, ratio, cov, titles, withShort = true, labels = LABELS_KO) {
   const kind = mkKind(flags);
-  const label = MK_LABEL[kind] + (withShort ? " · " + cbsaShort(cbsa, titles) : "");
+  const label = (labels[MK_KIND_RULE[kind]] || LABELS_KO[MK_KIND_RULE[kind]]) + (withShort ? " · " + cbsaShort(cbsa, titles) : "");
   const r = cov === "ok" && typeof ratio === "number" ? ratio.toFixed(2) : "—";
   const tip = `${(titles || {})[cbsa] ?? cbsa} · BPS 5+유닛 12개월합/3년평균 ${r} · 발행월 기준`;
   return `<span class="mk-chip mk-${kind}" title="${escHtml(tip)}">${escHtml(label)}</span>`;
@@ -1442,7 +1445,8 @@ function renderMarket(code) {
 
   const flagRows = c.flags.length ? c.flags.map(f => [f]) : [[""]];
   document.getElementById("marketFlags").innerHTML =
-    flagRows.map(([f]) => mkChip(code, f, c.ratio_12m_vs_3y, c.coverage, { [code]: c.name }, false)).join("");
+    flagRows.map(([f]) => mkChip(code, f, c.ratio_12m_vs_3y, c.coverage, { [code]: c.name }, false,
+                                 (marketData && marketData.labels) || LABELS_KO)).join("");
 
   // 차트: 36개월 bar + 12개월 이동합 line (첫 11개월은 null)
   const m = c.monthly || [];

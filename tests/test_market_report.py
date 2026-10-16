@@ -22,7 +22,7 @@ def test_real_context_seven_rows_and_low_volume():
     rows = _rows(md)
     assert len(rows) == 7
     como = next(r for r in rows if r.startswith("| COMO"))
-    assert [c.strip() for c in como.strip("|").split("|")][1:] == ["—", "—", "—", "판정불가(물량 부족)", "—"]
+    assert [c.strip() for c in como.strip("|").split("|")][1:] == ["—", "—", "—", "판정 제외(물량 부족)", "—"]
     assert "기준월 " in md and "출처 Census BPS·SOC" in md and "미착공·취소 미반영" in md
 
 
@@ -64,31 +64,44 @@ def test_reference_block_labels_only(monkeypatch):
     monkeypatch.undo()
     blk = weekly_report.market_reference_block()   # 실제 context_latest.json
     assert "--- 참고: 지역 공급 판정(자동 규칙, 참고용) ---" in blk
-    assert "ATL 평년 · DFW 평년 · LA 공급 급증 · SEA 공급 급증 · DEN 평년 · PHX 평년 · COMO 판정불가" in blk
+    assert ("ATL 평균 수준 · DFW 평균 수준 · LA 허가 급증 · SEA 허가 급증 · DEN 평균 수준 · "
+            "PHX 평균 수준 · COMO 판정 제외") in blk
+    assert "(ATL·평균 수준)" in blk and "판정 제외 지역은 라벨을 붙이지 말라" in blk
     assert "|" not in blk and "12,140" not in blk and "9,878" not in blk   # 표·수치·준공 추정치 미전달
 
 
+def test_index_html_labels_match_python():
+    """index.html 내장 LABELS_KO 와 market_rules.LABELS_KO(정본)가 어긋나면 실패."""
+    import re
+    from market_rules import LABELS_KO
+    html = (ROOT / "index.html").read_text(encoding="utf-8")
+    m = re.search(r"const LABELS_KO = (\{[^}]*\});", html)
+    assert m, "index.html에 const LABELS_KO = {...}; 한 줄이 있어야 한다"
+    assert json.loads(m.group(1)) == LABELS_KO
+    assert weekly_report.MARKET_LEAK_TERMS[:4] == tuple(LABELS_KO.values())
+
+
 def test_leakage_flags_implications_only():
-    md = ("## 1. 개발 현황\n- Hines가 Buckhead 312유닛 매입(ATL·평년). LA 착공(LA·공급 급증).\n\n"
-          "## 시장 데이터(공급) — WATCH 7\n| 지역 | 판정 |\n|---|---|\n| ATL | 평년 |\n\n"
+    md = ("## 1. 개발 현황\n- Hines가 Buckhead 312유닛 매입(ATL·평균 수준). LA 착공(LA·허가 급증).\n\n"
+          "## 시장 데이터(공급) — WATCH 7\n| 지역 | 판정 |\n|---|---|\n| ATL | 평균 수준 |\n\n"
           "## 4. 시사점 (우미글로벌 관점)\n"
-          "- PHX는 평년 국면으로 BTR 여건 양호. JV 기회 주목.\n"
+          "- PHX는 평균 수준 국면으로 BTR 여건 양호. JV 기회 주목.\n"
           "- DFW는 2027 예상 준공 물량이 높아 모니터링 필요.\n\n---\n*맺음말*")
     hits = weekly_report.check_market_leakage(md)
-    assert hits == ["PHX는 평년 국면으로 BTR 여건 양호.", "DFW는 2027 예상 준공 물량이 높아 모니터링 필요."]
+    assert hits == ["PHX는 평균 수준 국면으로 BTR 여건 양호.", "DFW는 2027 예상 준공 물량이 높아 모니터링 필요."]
 
 
 def test_leakage_clean_returns_empty():
-    md = ("## 1. 개발 현황\n- 매입(ATL·평년), 착공(SEA·공급 급증).\n\n"
+    md = ("## 1. 개발 현황\n- 매입(ATL·평균 수준), 착공(SEA·허가 급증).\n\n"
           "## 4. 시사점\n- 일본계 자본 JV 진입 패턴 정착. 디스트레스 자산 매입 검토.\n"
           "- Village at Sonoran Vista가 신규 준공 후 리파이낸스 확보.\n")
     assert weekly_report.check_market_leakage(md) == []   # "신규 준공 후"는 기사 사실 서술 → 통과
 
 
 def test_leakage_spacing_variants():
-    md = ("## 1. 개발 현황\n- 소형 자산 거래(LA·공급급증).\n\n"
-          "## 4. 시사점\n- LA는 공급급증 시장. SEA는 공급  급증 국면. DFW는 공급 급증 아님. JV 기회.\n")
-    assert weekly_report.check_market_leakage(md) == ["LA는 공급급증 시장.", "SEA는 공급  급증 국면.", "DFW는 공급 급증 아님."]
+    md = ("## 1. 개발 현황\n- 소형 자산 거래(LA·허가급증).\n\n"
+          "## 4. 시사점\n- LA는 허가급증 시장. SEA는 허가  급증 국면. DFW는 판정제외 지역. JV 기회.\n")
+    assert weekly_report.check_market_leakage(md) == ["LA는 허가급증 시장.", "SEA는 허가  급증 국면.", "DFW는 판정제외 지역."]
 
 
 def test_leakage_completion_terms():

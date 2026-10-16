@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
 from market_context import compute, expected_completion, region_map, RULE_VERSION, WATCH
-from market_rules import judge
+from market_rules import judge, LABELS_KO
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -89,6 +89,7 @@ def dump_context(bps, soc, region_of, out_path: Path = OUT_JSON, market_db: Path
     out = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
            "as_of": as_of, "rule_version": RULE_VERSION,
            "watch": [{"code": code, "short": short, "name": names.get(code, "")} for code, short in WATCH],
+           "labels": LABELS_KO,   # 판정 규칙 ID → 한국어 라벨 (화면 표시용, 정본 market_rules)
            "cbsa": {}}
     for code in sorted(names):
         c = compute(code, as_of, bps, soc, region_of)

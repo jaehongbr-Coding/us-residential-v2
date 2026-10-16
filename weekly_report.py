@@ -108,11 +108,17 @@ MARKET_REFERENCE = """\
 
 --- 참고: 지역 공급 판정(자동 규칙, 참고용) ---
 {labels}
-사용 규칙: (1) 1~3절에서 해당 지역 기사를 요약할 때 괄호 태그로만 붙인다. 예: "Hines가 Buckhead 312유닛 매입(ATL·평년)". (2) 4. 시사점에서는 이 라벨을 쓰지 말라 — 시사점은 기사 내용만 근거로 한다. (3) 라벨에서 수요·흡수·적합성·우선순위를 끌어내지 말라. 판정불가 지역은 라벨을 붙이지 말라. (4) 시장 데이터 표는 별도 자동 생성되므로 네가 쓰지 말라.
+사용 규칙: (1) 1~3절에서 해당 지역 기사를 요약할 때 괄호 태그로만 붙인다. 예: "Hines가 Buckhead 312유닛 매입(ATL·{flat})". (2) 4. 시사점에서는 이 라벨을 쓰지 말라 — 시사점은 기사 내용만 근거로 한다. (3) 라벨에서 수요·흡수·적합성·우선순위를 끌어내지 말라. {excluded} 지역은 라벨을 붙이지 말라. (4) 시장 데이터 표는 별도 자동 생성되므로 네가 쓰지 말라.
 라벨 표기는 위 표기 그대로(띄어쓰기 포함) 쓴다.
 """
+# 판정 라벨 정본은 market_rules.LABELS_KO. import 실패가 리포트 생성을 막지 않도록 감싼다 (M9)
+try:
+    from market_rules import LABELS_KO as _LABELS_KO
+except Exception as _e:
+    print(f"[WARN] market_rules 라벨 로드 실패 — 사후검사는 준공 표현만 본다: {type(_e).__name__}: {_e}")
+    _LABELS_KO = {}
 # "준공" 단독은 기사 요약의 "신규 준공 후" 같은 사실 서술까지 잡으므로 시장 추정치를 가리키는 표현만 본다
-MARKET_LEAK_TERMS = ("평년", "공급 급증", "공급 감소", "판정불가", "예상 준공", "준공 물량", "준공 예정")
+MARKET_LEAK_TERMS = tuple(_LABELS_KO.values()) + ("예상 준공", "준공 물량", "준공 예정")
 
 GEO_DB = "geo_tags.db"
 GEO_APPLICABLE_SCOPES = {"metro", "local"}                       # market_tagger 적용 조건과 동일
@@ -217,7 +223,9 @@ def market_reference_block() -> str:
     except Exception as e:
         print(f"[WARN] 시장 참조 블록 생략: {type(e).__name__}: {e}")
         return ""
-    return MARKET_REFERENCE.format(labels=labels) if labels else ""
+    if not labels or not _LABELS_KO:
+        return ""
+    return MARKET_REFERENCE.format(labels=labels, flat=_LABELS_KO["flat"], excluded=_LABELS_KO["unknown"])
 
 
 def check_market_leakage(md: str) -> list[str]:

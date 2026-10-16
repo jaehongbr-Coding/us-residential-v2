@@ -9,10 +9,11 @@ import json
 from pathlib import Path
 
 from market_context import WATCH
+from market_rules import LABELS_KO   # 판정 라벨 정본 (index.html LABELS_KO 와 동일 — 테스트로 강제)
 
 SECTION_TITLE = "## 시장 데이터(공급) — WATCH 7"
 NO_DATA = f"{SECTION_TITLE}\n\n시장 데이터 없음(context_latest.json 미확인)\n"
-FLAG_LABEL = {"supply_surge": "공급 급증", "supply_drought": "공급 감소"}   # index.html mk-chip 과 같은 한국어
+EXCLUDED = LABELS_KO["unknown"]
 COMPLETION_YEAR = "2027"
 
 
@@ -22,9 +23,9 @@ def _verdict(c: dict) -> str:
         flags = c.get("flags") or []
         for f in ("supply_surge", "supply_drought"):
             if f in flags:
-                return FLAG_LABEL[f]
-        return "평년"
-    return "판정불가(물량 부족)" if cov == "low_volume" else "판정불가(데이터 없음)"
+                return LABELS_KO[f]
+        return LABELS_KO["flat"]
+    return f"{EXCLUDED}(물량 부족)" if cov == "low_volume" else f"{EXCLUDED}(데이터 없음)"
 
 
 def _num(v) -> str:
@@ -48,7 +49,7 @@ def _watch_list(data: dict) -> list[tuple[str, str]]:
 
 
 def build_market_labels(context_path: str = "data/market/context_latest.json") -> str | None:
-    """LLM 참조용 라벨 한 줄 — 'ATL 평년 · DFW 평년 · … · COMO 판정불가'. 수치는 넣지 않는다.
+    """LLM 참조용 라벨 한 줄 — 'ATL 평균 수준 · DFW 평균 수준 · … · COMO 판정 제외'. 수치는 넣지 않는다.
     데이터가 없으면 None (참조 블록 생략)."""
     try:
         data = json.loads(Path(context_path).read_text(encoding="utf-8"))
@@ -58,8 +59,8 @@ def build_market_labels(context_path: str = "data/market/context_latest.json") -
         parts = []
         for code, short in _watch_list(data):
             c = cbsa.get(code) or {}
-            v = _verdict(c) if c else "판정불가"
-            parts.append(f"{short} {'판정불가' if v.startswith('판정불가') else v}")
+            v = _verdict(c) if c else EXCLUDED
+            parts.append(f"{short} {EXCLUDED if v.startswith(EXCLUDED) else v}")
         return " · ".join(parts)
     except Exception:
         return None
@@ -84,7 +85,7 @@ def build_market_section(context_path: str = "data/market/context_latest.json") 
             c = cbsa.get(code) or {}
             name = (c.get("name") or "").strip()
             region = f"{short} · {name}" if name else short
-            verdict = _verdict(c) if c else "판정불가(데이터 없음)"
+            verdict = _verdict(c) if c else f"{EXCLUDED}(데이터 없음)"
             if c.get("coverage") == "ok":
                 ratio = c.get("ratio_12m_vs_3y")
                 cells = [_num(c.get("units_12m")), _num(c.get("units_avg3y")),

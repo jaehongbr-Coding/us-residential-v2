@@ -54,7 +54,7 @@
 └─────────────────────────────────────────────────────────────────────┘
                               │
 ┌─ 화면 (index.html, 정적) ─────────────────────────────────────────┐
-│  아카이브 카드: rel 칩 옆에 mk 칩 ("높음" · "공급 감소 · ATL")       │
+│  아카이브 카드: rel 칩 옆에 mk 칩 ("높음" · "허가 급감 · ATL")       │
 │  마켓워치 섹션(신규): context_latest.json → Chart.js (재도입)        │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -861,7 +861,7 @@ for u in U:
 index.html은 `articles.csv`, `archive_index.json`, `data/market/context_latest.json`(신규), `reports/`, `manifest.json`을 읽는다.
 
 **(a) 시장 맥락 칩 — 아카이브 표 제목 셀.** 아카이브는 카드가 아니라 표이고 `rel`은 50px 텍스트 칸이라 그 옆에 칩이 들어가지 않는다. 제목 링크 아래 `<div class="mk-row">`에 `rec.mk` 행마다 `<span class="mk-chip mk-{flat|unknown|surge|drought}">`. `mk`가 없으면 줄 자체를 만들지 않는다. 필터용 `.chip`과 별개 클래스(표시 전용).
-- 라벨: 평년 / 판정불가 / 공급 급증 / 공급 감소 + ` · ` + 약칭
+- 라벨: 평균 수준 / 판정 제외 / 허가 급증 / 허가 급감 + ` · ` + 약칭 (2026-10-16 변경, 정본 `market_rules.LABELS_KO` — index.html 내장 `LABELS_KO`와 일치를 테스트로 강제)
 - 약칭: `CBSA_SHORT[cbsa]`(ATL DFW LA SEA DEN PHX COMO) ?? `cbsa_titles[cbsa].split(",")[0].split("-")[0].trim()` ("Orlando-Kissimmee-Sanford, FL" → "Orlando")
 - title: `{cbsa_titles} · BPS 5+유닛 12개월합/3년평균 {ratio(ok일 때만) | —} · 발행월 기준`
 - 색(기존 팔레트): flat #eee/#555, unknown 흰 바탕 점선 #999, surge #fff4d6/#f4b400, drought #e8eef5/#1B3A5C
@@ -884,9 +884,9 @@ index.html은 `articles.csv`, `archive_index.json`, `data/market/context_latest.
 
 - **6.0 조사**: weekly_report.py의 섹션 조립 방식, LLM 호출 구조(프롬프트 템플릿 위치), md→docx 변환 방식(어떤 라이브러리, 표 지원 여부), 실행 인자(--period, --export). §7의 5.4 항목이 무엇인지 확인.
 - **6.1 WATCH 정본 단일화**: WATCH 7(12060 ATL, 19100 DFW, 31080 LA, 42660 SEA, 19740 DEN, 38060 PHX, 17860 COMO)을 market_context.py 한 곳에 두고 dump_context가 context_latest.json 최상위에 `"watch": [{"code","short","name"}]`로 내보낸다. index.html은 하드코딩된 WATCH 대신 json의 watch를 읽는다(json에 watch가 없으면 기존 하드코딩으로 폴백).
-- **6.2 시장 섹션 결정적 생성**: market_report.py(신규, 순수 함수) — context_latest.json을 읽어 WATCH 7 각각에 대해 {12개월 허가, 3년 평균, 비율, 판정 라벨, 2027 예상 준공 합계}를 markdown 표로 만든다. coverage가 ok가 아닌 CBSA는 수치 열을 비우고 판정 열에 "판정불가(물량 부족)" 또는 "판정불가(데이터 없음)"만 적는다. 표 아래 각주: 기준월, 규칙 버전, 출처(Census BPS·SOC), "준공 예상은 SOC 지역 평균 lag 적용 추정치 — 미착공·취소 미반영". 파일이 없거나 파싱 실패 시 "시장 데이터 없음(context_latest.json 미확인)" 한 줄을 반환하고 예외를 올리지 않는다.
-- **6.3 LLM 참조 전달**: 6.2의 표를 기존 프롬프트 끝에 참조 블록으로 추가. 지시문: "아래 시장 데이터는 참고용이다. 기사 요약에서 해당 CBSA를 언급할 때 판정 라벨(평년/공급 급증/공급 감소)을 인용할 수 있다. 수치의 원인·인과·전망을 서술하지 말라. 판정불가 CBSA는 시장 수치를 언급하지 말라. 판정 라벨과 기사 관련성 등급을 합쳐 새 등급을 만들지 말라(M1)."
-- **6.4 테스트**: tests/test_market_report.py — (a) 정상 json → 7행 표, 판정불가 행은 수치 비어 있음 (b) 파일 없음 → "시장 데이터 없음" 1줄, 예외 없음 (c) json 깨짐 → 동일 (d) watch 키 없음 → 기존 WATCH 상수로 폴백.
+- **6.2 시장 섹션 결정적 생성**: market_report.py(신규, 순수 함수) — context_latest.json을 읽어 WATCH 7 각각에 대해 {12개월 허가, 3년 평균, 비율, 판정 라벨, 2027 예상 준공 합계}를 markdown 표로 만든다. coverage가 ok가 아닌 CBSA는 수치 열을 비우고 판정 열에 "판정 제외(물량 부족)" 또는 "판정 제외(데이터 없음)"만 적는다. 표 아래 각주: 기준월, 규칙 버전, 출처(Census BPS·SOC), "준공 예상은 SOC 지역 평균 lag 적용 추정치 — 미착공·취소 미반영". 파일이 없거나 파싱 실패 시 "시장 데이터 없음(context_latest.json 미확인)" 한 줄을 반환하고 예외를 올리지 않는다.
+- **6.3 LLM 참조 전달**: 6.2의 표를 기존 프롬프트 끝에 참조 블록으로 추가. 지시문: "아래 시장 데이터는 참고용이다. 기사 요약에서 해당 CBSA를 언급할 때 판정 라벨(평균 수준/허가 급증/허가 급감)을 인용할 수 있다. 수치의 원인·인과·전망을 서술하지 말라. 판정 제외 CBSA는 시장 수치를 언급하지 말라. 판정 라벨과 기사 관련성 등급을 합쳐 새 등급을 만들지 말라(M1)."
+- **6.4 테스트**: tests/test_market_report.py — (a) 정상 json → 7행 표, 판정 제외 행은 수치 비어 있음 (b) 파일 없음 → "시장 데이터 없음" 1줄, 예외 없음 (c) json 깨짐 → 동일 (d) watch 키 없음 → 기존 WATCH 상수로 폴백.
 - **6.5 수동 실행**: workflow_dispatch로 weekly_report 1회 실행 → reports/의 md·docx에서 시장 섹션 위치·표 렌더링 확인 → 10/19 정규 실행.
 
 ## 5. 트레이드오프 총괄
@@ -985,7 +985,7 @@ index.html은 `articles.csv`, `archive_index.json`, `data/market/context_latest.
 | # | 항목 | 상태 |
 |---|---|---|
 | C1 | 관심 CBSA 7개 목록 — Houston(26420)·Charlotte(16740) 추가? | 7개 유지, 필요 시 `CBSA_SHORT`·`MARKET_WATCH` 상수 1줄 |
-| C2 | 칩 문구 | **확정: 한글 라벨**(평년/공급 급증/공급 감소/판정불가) + title에 수치 |
+| C2 | 칩 문구 | **확정: 한글 라벨**(평균 수준/허가 급증/허가 급감/판정 제외 — 2026-10-16 측정 사실 기준으로 변경, 이전 평년/공급 급증/공급 감소/판정불가) + title에 수치 |
 | C3 | ~~geo 착수 시점~~ | 해소 (geo 완료) |
 | C4 | ~~SOC 파서~~ | 해소 |
 | C5 | `metro_micro` 코드 의미 | **정정**: 실측 값은 2·4·5 세 가지(2026-08: 2=275, 4=112, 5=534). "2=Metro, 5=Micro" 추정은 불완전, 의미 미확인. **어떤 필터·판정에도 쓰지 않는다** |

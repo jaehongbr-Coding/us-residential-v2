@@ -3,6 +3,16 @@
 from market_context import MarketContext
 
 RULE_VERSION = "v1"
+
+# 판정 결과의 한국어 표시 라벨 — 정본은 여기 하나 (2026-10-16 측정 사실 기준으로 변경).
+# market_report·weekly_report 사후검사·context_latest.json "labels"·index.html(LABELS_KO)이 같은 맵을 쓴다.
+# 규칙 ID는 그대로다. "flat"은 판정 가능(ok)하나 S1·S2 어디에도 해당하지 않는 경우(flags 빈 목록)의 표시용 ID.
+LABELS_KO = {
+    "flat": "평균 수준",
+    "supply_surge": "허가 급증",
+    "supply_drought": "허가 급감",
+    "unknown": "판정 제외",
+}
 THRESH = dict(surge=1.25, drought=0.75)   # 2026-10-15 실측 (VOLUME_FLOOR 1000, 80 CBSA) p80/p20 근방
 
 
