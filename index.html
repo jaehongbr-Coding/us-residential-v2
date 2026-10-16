@@ -224,6 +224,13 @@
     .market-completion th, .market-completion td { padding: 4px 12px; font-size: 12px; border-bottom: 1px solid #f0f0f0; }
     .market-completion td.num { text-align: right; }
     .market-note { font-size: 11px; color: #888; line-height: 1.6; }
+    .market-tile .t-verdict { font-size: 18px; }
+    .market-articles { font-size: 12px; color: #888; margin: 0 0 8px; }
+    .market-articles a { color: #1a73e8; text-decoration: none; cursor: pointer; }
+    .market-articles a:hover { text-decoration: underline; }
+    .market-method { font-size: 11px; color: #888; margin-bottom: 12px; }
+    .market-method summary { cursor: pointer; color: #555; }
+    .market-method ul { margin: 6px 0 0 18px; line-height: 1.7; }
     .market-note p { margin-bottom: 4px; }
     @media (max-width: 768px) {
       .market-tiles { grid-template-columns: repeat(2, 1fr); }
@@ -553,7 +560,16 @@
           <div id="marketMeta" class="market-meta"></div>
           <select id="marketSelect" class="market-select" onchange="renderMarket(this.value)"></select>
           <div id="marketTiles" class="market-tiles"></div>
-          <div id="marketFlags" class="mk-row market-flags"></div>
+          <div id="marketArticles" class="market-articles"></div>
+          <details class="market-method">
+            <summary>ⓘ 계산 방식</summary>
+            <ul>
+              <li>출처: 미국 Census 건축허가 통계(BPS) 월간 CBSA 파일의 5유닛 이상 허가 건수, 준공 기간은 Census SOC 지역 평균</li>
+              <li>비교: 최근 12개월 합계 ÷ 직전 36개월의 연평균</li>
+              <li>판정: 125% 이상 허가 급증, 75% 이하 허가 급감, 그 사이 평균 수준. 연평균 1,000유닛 미만 지역은 한 건의 허가로 비율이 크게 흔들려 판정에서 제외</li>
+              <li>준공 예상: 허가 시점에 지역 평균 준공 기간을 더한 추정치. 미착공·취소는 반영하지 않음</li>
+            </ul>
+          </details>
           <div class="market-chart-box"><canvas id="marketChart"></canvas></div>
           <div id="marketCompletion"></div>
           <div id="marketNote" class="market-note"></div>
@@ -1384,7 +1400,6 @@ function marketWatchList() {
   }
   return MARKET_WATCH.map(c => ({ code: c, short: CBSA_SHORT[c] || c }));
 }
-const MARKET_COV_LABEL = { ok: "판정 가능", low_volume: "물량 부족", no_data: "데이터 없음" };
 let marketData = null;
 let marketLoaded = false;
 let marketChart = null;
@@ -1402,7 +1417,7 @@ function loadMarketData() {
       document.getElementById("marketSpinner").style.display = "none";
       document.getElementById("marketApp").style.display = "block";
       document.getElementById("marketMeta").textContent =
-        `기준월 ${data.as_of} · 규칙 ${data.rule_version} · 출처 Census BPS·SOC`;
+        `데이터 기준월 ${data.as_of} (Census 발표 시차 약 2개월) · 판정 규칙 ${data.rule_version}`;
       buildMarketSelect();
       renderMarket(marketWatchList()[0].code);
     })
@@ -1430,23 +1445,79 @@ function marketTile(label, value, sub) {
     <div class="t-value">${value}</div>${sub ? `<div class="t-sub">${sub}</div>` : ""}</div>`;
 }
 
+// 마켓워치 → 아카이브 검색: WATCH는 약칭(정확일치 → cbsa 필터), 그 외는 CBSA 이름 첫 구간(부분일치)
+function marketSearchTerm(code) {
+  const w = marketWatchList().find(x => x.code === code);
+  if (w) return w.short;
+  const name = (marketData.cbsa[code] && marketData.cbsa[code].name) || code;
+  return name.split(",")[0].split("-")[0].trim();
+}
+
+function openArchiveSearch(term) {
+  const q = term.toLowerCase();
+  const btn = document.querySelector('.page-tab-btn[data-page="page-archive"]');
+  if (archiveData) {
+    switchPage(btn);
+    clearArchiveFilters();
+    document.getElementById("archiveSearchInput").value = term;
+    onArchiveFilterChange();
+  } else {
+    // 아카이브 첫 진입: loadArchiveData()가 해시의 q를 복원해 검색을 실행한다
+    history.replaceState(null, "", "#archive?q=" + encodeURIComponent(q));
+    switchPage(btn);
+  }
+  window.scrollTo(0, 0);
+}
+
 function renderMarket(code) {
   const c = marketData && marketData.cbsa[code];
   if (!c) return;
   document.getElementById("marketSelect").value = code;
-  const num = v => (typeof v === "number" ? v.toLocaleString() : "—");
+  const num = v => (typeof v === "number" ? Math.round(v).toLocaleString() : "—");
+  const verdictLabels = (marketData && marketData.labels) || LABELS_KO;
+  const ratio = typeof c.ratio_12m_vs_3y === "number" ? c.ratio_12m_vs_3y : null;
+  const pct = ratio === null ? null : Math.round(ratio * 100);
+  const lag = c.expected_completion ? c.expected_completion.lag_months : null;
+
+  // 결론 → 근거 → 참고 순 (2026-10-16). 판정 칩은 타일 1이 대체한다
+  let verdict, verdictSub;
+  if (c.coverage === "ok") {
+    const fs = c.flags || [];
+    verdict = fs.includes("supply_surge") ? verdictLabels.supply_surge
+            : fs.includes("supply_drought") ? verdictLabels.supply_drought : verdictLabels.flat;
+    verdictSub = `최근 12개월 건축허가가 직전 3년 평균의 ${pct}%`;
+  } else if (c.coverage === "low_volume") {
+    verdict = verdictLabels.unknown;
+    verdictSub = `연평균 허가 ${num(c.units_avg3y)}유닛 — 1,000 미만이라 판정하지 않음`;
+  } else {
+    verdict = verdictLabels.unknown;
+    verdictSub = "건축허가 데이터 없음";
+  }
+  const noData = c.coverage === "no_data";
+  const bq = (c.expected_completion && c.expected_completion.by_quarter) || {};
+  const q2027 = Object.keys(bq).filter(q => q.startsWith("2027"));
+  // 데이터 없음(no_data) CBSA는 by_quarter가 0으로 채워져 있어도 추정이 아니므로 "—"
+  const comp2027 = (q2027.length && !noData) ? q2027.reduce((s, q) => s + (bq[q] || 0), 0) : null;
 
   document.getElementById("marketTiles").innerHTML = [
-    marketTile("3년 대비", typeof c.ratio_12m_vs_3y === "number" ? c.ratio_12m_vs_3y.toFixed(2) : "—"),
-    marketTile("판정", MARKET_COV_LABEL[c.coverage] || escHtml(c.coverage)),
-    marketTile("12개월 허가", num(c.units_12m), `3년평균 ${num(c.units_avg3y)}`),
-    marketTile("기사", c.article_counts && c.article_counts.total != null ? num(c.article_counts.total) : "—"),
+    marketTile("공급 판정", `<span class="t-verdict">${escHtml(verdict)}</span>`, escHtml(verdictSub)),
+    marketTile("최근 12개월 건축허가 (5유닛 이상)", noData ? "—" : num(c.units_12m),
+               noData ? "" : `직전 36개월 평균 ${num(c.units_avg3y)}/년`),
+    c.coverage === "ok"
+      ? marketTile("평균 대비", `${pct}%`, "급증 125% 이상 · 급감 75% 이하")
+      : marketTile("평균 대비", "—", c.coverage === "low_volume" && pct !== null ? `참고: ${pct}% (판정 기준 미달)` : ""),
+    marketTile("2027년 예상 준공", comp2027 === null ? "—" : num(comp2027),
+               comp2027 === null ? "" : `허가→준공 평균 ${lag}개월 적용 추정`),
   ].join("");
 
-  const flagRows = c.flags.length ? c.flags.map(f => [f]) : [[""]];
-  document.getElementById("marketFlags").innerHTML =
-    flagRows.map(([f]) => mkChip(code, f, c.ratio_12m_vs_3y, c.coverage, { [code]: c.name }, false,
-                                 (marketData && marketData.labels) || LABELS_KO)).join("");
+  // 관련 기사 수 = 그 CBSA로 geo 태깅된 전체 기사(article_counts.all, 아카이브 검색과 같은 기준)
+  const ac = c.article_counts || {};
+  const total = ac.all ?? ac.total ?? 0;
+  const term = marketSearchTerm(code);
+  document.getElementById("marketArticles").innerHTML = total
+    ? `관련 기사 ${total.toLocaleString()}건 → <a role="button" data-term="${escHtml(term)}"
+         onclick="openArchiveSearch(this.dataset.term)">아카이브에서 보기</a>`
+    : "관련 기사 없음";
 
   // 차트: 36개월 bar + 12개월 이동합 line (첫 11개월은 null)
   const m = c.monthly || [];
@@ -1459,8 +1530,8 @@ function renderMarket(code) {
       data: {
         labels,
         datasets: [
-          { type: "bar", label: "월간 5+유닛 허가", data: bars, backgroundColor: "#1B3A5C", yAxisID: "y", order: 2 },
-          { type: "line", label: "12개월 이동합", data: roll, borderColor: "#2E75B6", backgroundColor: "#2E75B6",
+          { type: "bar", label: "월별 건축허가(5유닛 이상)", data: bars, backgroundColor: "#1B3A5C", yAxisID: "y", order: 2 },
+          { type: "line", label: "최근 12개월 합계", data: roll, borderColor: "#2E75B6", backgroundColor: "#2E75B6",
             pointRadius: 0, borderWidth: 2, yAxisID: "y1", spanGaps: false, order: 1 },
         ],
       },
@@ -1480,17 +1551,15 @@ function renderMarket(code) {
     });
   }
 
-  const bq = (c.expected_completion && c.expected_completion.by_quarter) || {};
   const qs = Object.keys(bq);
   document.getElementById("marketCompletion").innerHTML = qs.length
     ? `<table class="market-completion"><thead><tr><th>준공 예상 분기</th><th>유닛</th></tr></thead><tbody>${
         qs.map(q => `<tr><td>${escHtml(q)}</td><td class="num">${num(bq[q])}</td></tr>`).join("")}</tbody></table>`
     : '<p class="market-note">lag 산출 불가</p>';
 
-  const lag = c.expected_completion ? c.expected_completion.lag_months : null;
   const notes = [];
   if (c.coverage === "low_volume") {
-    notes.push(`판정 불가 — 3년 평균 ${num(c.units_avg3y)}유닛/년 &lt; 하한 1,000. 수치는 참고용.`);
+    notes.push(`판정 제외 — 3년 평균 ${num(c.units_avg3y)}유닛/년 &lt; 하한 1,000. 수치는 참고용.`);
   }
   notes.push(`기저선은 직전 36개월 평균. 2021~22년 허가 급증기가 포함돼 전국 중앙값이 1 미만. ` +
     `준공 예상은 SOC ${escHtml(c.region ?? "—")} 평균 lag ${lag ?? "—"}개월(20+유닛) 적용 추정치 — 미착공·취소 미반영.`);

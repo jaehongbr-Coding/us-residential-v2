@@ -73,10 +73,17 @@ def _article_counts(market_db: Path) -> dict | None:
         rows = conn.execute(
             "SELECT cbsa_code, COUNT(*), SUM(coverage='ok') FROM market_flags "
             "WHERE rule_version=? AND coverage!='not_applicable' GROUP BY cbsa_code", (RULE_VERSION,)).fetchall()
+        all_rows = dict(conn.execute(
+            "SELECT cbsa_code, COUNT(*) FROM market_flags WHERE rule_version=? GROUP BY cbsa_code",
+            (RULE_VERSION,)).fetchall())
     finally:
         conn.close()
-    # total = not_applicable 제외 판정 대상 행, judgeable = 그중 coverage ok(판정 가능) 행
-    return {code: {"total": total, "judgeable": ok} for code, total, ok in rows}
+    # total = not_applicable 제외 판정 대상 행, judgeable = 그중 coverage ok(판정 가능) 행,
+    # all = not_applicable 포함 그 CBSA로 geo 태깅된 전체 기사 행 (마켓워치 "관련 기사 N건" — 아카이브 검색 건수와 같은 기준)
+    out = {code: {"total": total, "judgeable": ok, "all": all_rows.get(code, total)} for code, total, ok in rows}
+    for code, n in all_rows.items():
+        out.setdefault(code, {"total": 0, "judgeable": 0, "all": n})
+    return out
 
 
 def dump_context(bps, soc, region_of, out_path: Path = OUT_JSON, market_db: Path = MARKET_DB) -> int | None:
