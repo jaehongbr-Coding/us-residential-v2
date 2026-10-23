@@ -1507,7 +1507,7 @@ function renderMarket(code) {
       ? marketTile("평균 대비", `${pct}%`, "급증 125% 이상 · 급감 75% 이하")
       : marketTile("평균 대비", "—", c.coverage === "low_volume" && pct !== null ? `참고: ${pct}% (판정 기준 미달)` : ""),
     marketTile("2027년 예상 준공", comp2027 === null ? "—" : num(comp2027),
-               comp2027 === null ? "" : `허가→준공 평균 ${lag}개월 적용 추정`),
+               comp2027 === null ? "" : `허가→준공 평균 ${Number(lag).toFixed(1)}개월 적용 추정`),
   ].join("");
 
   // 관련 기사 수 = 그 CBSA로 geo 태깅된 전체 기사(article_counts.all, 아카이브 검색과 같은 기준)
