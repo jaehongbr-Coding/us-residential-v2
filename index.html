@@ -184,15 +184,14 @@
     .archive-sort-row { font-size: 12px; color: #666; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
     .archive-sort-row select { padding: 4px 8px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; }
 
-    /* ── 아카이브 모바일(≤600px): 필터 접힘 + 내부 스크롤 영역 거터 ── */
-    .archive-filter-toggle { display: none; }
+    /* ── 아카이브 필터 접힘(전 화면 공통) + 모바일(≤600px) 내부 스크롤 영역 거터 ── */
+    .archive-filter-toggle {
+      display: block; width: 100%; margin-bottom: 12px; padding: 8px 12px; font-size: 13px; font-weight: 600;
+      text-align: left; border: 1px solid #dce6ef; border-radius: 8px; background: #f2f6fa; color: #1B3A5C; cursor: pointer;
+    }
+    .archive-filter-block { display: none; }
+    .archive-filter-block.open { display: block; }
     @media (max-width: 600px) {
-      .archive-filter-toggle {
-        display: block; width: 100%; margin-bottom: 12px; padding: 8px 12px; font-size: 13px; font-weight: 600;
-        text-align: left; border: 1px solid #dce6ef; border-radius: 8px; background: #f2f6fa; color: #1B3A5C; cursor: pointer;
-      }
-      .archive-filter-block { display: none; }
-      .archive-filter-block.open { display: block; }
       /* 엄지로 페이지를 내릴 때 내부 스크롤이 잡히지 않도록 좌우 24px 거터 */
       #chipState, #chipEventTag, #page-archive .scroll-box { margin-left: 24px; margin-right: 24px; }
       .archive-filter-group .chip { font-size: 11px; padding: 4px 8px; }
@@ -493,7 +492,7 @@
         <div class="section">
           <div class="section-title">🗄️ 아카이브 검색</div>
 
-          <!-- 모바일(≤600px)에서만 보이는 필터 펼침 토글. 로드마다 접힘으로 시작 (상태 저장 안 함) -->
+          <!-- 필터 펼침 토글 — 전 화면 공통, 로드마다 접힘 (상태 저장 안 함) -->
           <button type="button" id="archiveFilterToggle" class="archive-filter-toggle"
                   aria-expanded="false" aria-controls="archiveFilterBlock" onclick="toggleArchiveFilterBlock()">필터 ▾</button>
 
@@ -1031,7 +1030,7 @@ function archiveTextLabel(text) {
   return `"${CBSA_SHORT[code]}" → ${t.split(",")[0].split("-")[0].trim()}`;
 }
 
-/* 모바일 필터 토글: 접힘/펼침과 "필터 ▾ (n개 적용)" 라벨. 데스크톱에서는 버튼이 숨겨져 블록이 항상 보인다 */
+/* 필터 토글(전 화면 공통): 접힘/펼침과 "필터 (n) ▾" 라벨 — n = 활성 칩 + 기간 입력 + 검색어 입력 */
 function toggleArchiveFilterBlock() {
   const block = document.getElementById("archiveFilterBlock");
   const open = block.classList.toggle("open");
@@ -1044,9 +1043,9 @@ function updateArchiveFilterToggle() {
   if (!btn) return;
   const n = archiveFilters.sec.size + archiveFilters.st.size + archiveFilters.ev.size +
             archiveFilters.rel.size + archiveFilters.cat.size +
-            (archiveFilters.fromDate ? 1 : 0) + (archiveFilters.toDate ? 1 : 0);
+            (archiveFilters.fromDate || archiveFilters.toDate ? 1 : 0) + (archiveFilters.text ? 1 : 0);
   const open = document.getElementById("archiveFilterBlock").classList.contains("open");
-  btn.textContent = `필터 ${open ? "▴" : "▾"}` + (n ? ` (${n}개 적용)` : "");
+  btn.textContent = `필터${n ? ` (${n})` : ""} ${open ? "▴" : "▾"}`;
 }
 
 function hasAnyArchiveFilter() {
