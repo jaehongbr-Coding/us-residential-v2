@@ -1,4 +1,4 @@
-const CACHE_NAME = "the-brief-20261026-filter";
+const CACHE_NAME = "the-brief-80344a35";
 
 const PRECACHE_URLS = [
   "/us-residential-v2/",
